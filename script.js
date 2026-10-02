@@ -14,7 +14,7 @@
   "use strict";
 
   const SUPABASE_URL = "https://otrjuqcutwlwvzyruhaq.supabase.co";
-  const SUPABASE_PUBLISHABLE_KEY = "b_publishable_ro_4z-4OdgFCda9pT8Z3Pg_UEnY4aTE";
+  const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_ro_4z-4OdgFCda9pT8Z3Pg_UEnY4aTE";
   const LOGO_BUCKET = "team-logos";
   const WHATSAPP_FUNCTION = "post-whatsapp";
   const MAX_LOGO_MB = 3;
