@@ -217,16 +217,26 @@
   }
 
   function renderAuthShell() {
+    /*
+      PRE-LOGIN GATE
+      ----------------
+      Normal public entry is intentionally LOGIN ONLY.
+      Practice, Recruitment, My Posts and Admin controls are never rendered
+      before authentication.
+
+      A direct ?register=1 route is retained for controlled distribution of
+      the registration page, but no registration button/link appears here.
+    */
+    const registerRoute = new URLSearchParams(window.location.search).get("register") === "1";
+
     app.innerHTML = `
       <div class="landing-shell">
-        <div class="landing">
-          <button class="admin-mini-btn" id="adminBtn">ADMIN</button>
+        <div class="landing landing-auth-only">
           <div class="landing-top">
             <div class="brand-mini"><span>7TH UNIVERSE</span> ESPORTS</div>
-            <div class="actions">
-              <button class="btn btn-dark btn-small" id="landingPractice">PRACTICE CHALLENGES</button>
-              <button class="btn btn-dark btn-small" id="landingRecruitment">RECRUITMENT</button>
-              <button class="btn btn-primary btn-small" id="registerBtnTop">REGISTER NEW ACCOUNT</button>
+            <div class="brand-status">
+              <span class="status-dot"></span>
+              MEMBER ACCESS
             </div>
           </div>
 
@@ -236,29 +246,29 @@
               <h1>7TH <strong>UNIVERSE</strong></h1>
               <h2>ESPORTS PRACTICE • RECRUITMENT</h2>
               <p>
-                Find Clash Squad practice challenges, post your team's recruitment requirements,
-                and connect with competitive Free Fire players and teams through one organized platform.
+                A private esports workspace for approved Free Fire members to
+                create Clash Squad practice challenges, publish recruitment requirements,
+                and manage their team activity.
               </p>
+
               <div class="hero-tags">
+                <span class="tag">FREE FIRE</span>
                 <span class="tag">CLASH SQUAD</span>
-                <span class="tag">PRACTICE MATCHES</span>
-                <span class="tag">TEAM RECRUITMENT</span>
-                <span class="tag">PLAYER RECRUITMENT</span>
-                <span class="tag">7TH UNIVERSE COMMUNITY</span>
+                <span class="tag">PRACTICE</span>
+                <span class="tag">RECRUITMENT</span>
+                <span class="tag">MEMBERS ONLY</span>
               </div>
+
               <div class="danger-note">
-                Every team may have a maximum of <b>2 registered website members</b>
-                (Leader/IGL + Sub-Leader). Final approval is controlled by the admin.
+                <b>MEMBER-ONLY FEATURES</b><br>
+                Practice matches, recruitment tools, team activity and administration
+                become available only after successful login.
               </div>
             </section>
 
             <section class="auth-card">
               <div class="auth-box">
-                <div class="auth-tabs">
-                  <button class="tab ${loginMode === "login" ? "active" : ""}" data-auth-tab="login">LOGIN</button>
-                  <button class="tab ${loginMode === "register" ? "active" : ""}" data-auth-tab="register">REGISTER</button>
-                </div>
-                ${loginMode === "login" ? loginForm() : registerForm()}
+                ${registerRoute ? registerForm() : loginForm()}
               </div>
             </section>
           </div>
@@ -266,59 +276,50 @@
       </div>
     `;
 
-    document.querySelectorAll("[data-auth-tab]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        loginMode = btn.dataset.authTab;
-        render();
-      });
-    });
-
-    document.getElementById("registerBtnTop")?.addEventListener("click", () => {
-      loginMode = "register";
-      render();
-    });
-
-    document.getElementById("adminBtn")?.addEventListener("click", () => {
-      loginMode = "login";
-      render();
-      document.querySelector("#loginIdentifier")?.focus();
-    });
-
-    document.getElementById("landingPractice")?.addEventListener("click", async () => {
-      await openPublicList("practice");
-    });
-
-    document.getElementById("landingRecruitment")?.addEventListener("click", async () => {
-      await openPublicList("recruit");
-    });
-
     document.getElementById("loginForm")?.addEventListener("submit", handleLogin);
     document.getElementById("registerForm")?.addEventListener("submit", handleRegister);
+
+    if (registerRoute) {
+      document.getElementById("backToLogin")?.addEventListener("click", () => {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("register");
+        window.history.replaceState({}, "", url);
+        loginMode = "login";
+        renderAuthShell();
+      });
+    }
   }
 
   function loginForm() {
     return `
-      <h3>Welcome Back</h3>
-      <p class="sub">Login with your email or mobile number.</p>
+      <div class="login-badge">AUTHORIZED MEMBERS</div>
+      <h3>Member Login</h3>
+      <p class="sub">Sign in with your registered email or mobile number.</p>
+
       <form id="loginForm">
         <div class="field">
           <label>Email / Mobile Number</label>
-          <input id="loginIdentifier" required placeholder="you@email.com or 03XXXXXXXXX" autocomplete="username" />
+          <input id="loginIdentifier" required placeholder="you@email.com or 03XXXXXXXXX" autocomplete="username" inputmode="email" />
         </div>
         <div class="field">
           <label>Password</label>
           <input id="loginPassword" type="password" required placeholder="Your password" autocomplete="current-password" />
         </div>
-        <button class="btn btn-primary" type="submit" style="width:100%">LOGIN</button>
-        <div class="status-line">New member? Use <b>REGISTER</b> above.</div>
+        <button class="btn btn-primary" type="submit" style="width:100%">LOGIN TO 7TH UNIVERSE</button>
+        <div class="status-line" style="text-align:center;margin-top:14px">
+          Practice, Recruitment and Admin controls are available after login.
+        </div>
       </form>
     `;
   }
 
   function registerForm() {
     return `
+      <div class="login-badge">CONTROLLED REGISTRATION</div>
       <h3>Register New Account</h3>
       <p class="sub">Create a Team Leader / IGL or Sub-Leader account.</p>
+      <button id="backToLogin" type="button" class="btn btn-dark btn-small" style="margin-bottom:16px">← BACK TO LOGIN</button>
+
       <form id="registerForm">
         <div class="grid-2">
           <div class="field">
@@ -333,7 +334,6 @@
             </select>
           </div>
         </div>
-
         <div class="grid-2">
           <div class="field">
             <label>IGL / Member Name *</label>
@@ -344,12 +344,10 @@
             <input id="regPhone" required maxlength="20" placeholder="03XXXXXXXXX" />
           </div>
         </div>
-
         <div class="field">
           <label>Email *</label>
           <input id="regEmail" type="email" required maxlength="120" placeholder="team@example.com" />
         </div>
-
         <div class="grid-2">
           <div class="field">
             <label>Password *</label>
@@ -360,18 +358,15 @@
             <input id="regPassword2" type="password" required minlength="8" placeholder="Repeat password" />
           </div>
         </div>
-
         <div class="field">
           <label>Team Logo (Optional)</label>
           <input id="regLogo" type="file" accept="image/png,image/jpeg,image/webp" />
           <div class="hint">PNG/JPG/WEBP • Maximum ${MAX_LOGO_MB} MB</div>
         </div>
-
         <div class="danger-note" style="margin-bottom:14px">
-          <b>Maximum 2 website registrations per team.</b><br>
+          <b>Maximum 2 website members per team.</b><br>
           Recommended: 1 Team Leader/IGL + 1 Sub-Leader.
         </div>
-
         <button class="btn btn-primary" type="submit" style="width:100%">SUBMIT REGISTRATION</button>
       </form>
     `;
