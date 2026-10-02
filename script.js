@@ -329,7 +329,7 @@
 
   function registrationForm() {
     return `
-      <div class="badge">CONTROLLED REGISTRATION</div>
+      <div class="badge">MEMBER REGISTRATION</div>
       <h3>Create Member Account</h3>
       <p class="auth-sub">
         Register as Team Leader / IGL or Sub-Leader. Every team is limited to two website members.
@@ -508,9 +508,7 @@
       }
       if (password.length < 8) throw new Error("Password must be at least 8 characters.");
       if (password !== password2) throw new Error("Passwords do not match.");
-      if (!/^\+92\d{10}$/.test(phone)) {
-        throw new Error("Enter a valid Pakistan mobile number.");
-      }
+      if (!/^\+92\d{10}$/.test(phone)) throw new Error("Enter a valid Pakistan mobile number.");
 
       if (logoFile) {
         if (logoFile.size > MAX_LOGO_MB * 1024 * 1024) {
@@ -521,18 +519,16 @@
         }
       }
 
+      // Client-side availability check for instant feedback. The server-side trigger
+      // remains the source of truth for the two-member team rule.
       const { data: existingTeam, error: teamError } = await sb
         .from("teams")
         .select("id,name,status")
         .ilike("name", teamName)
         .limit(1)
         .maybeSingle();
-
       if (teamError) throw teamError;
-
-      if (existingTeam?.status === "banned") {
-        throw new Error("This team is blocked from registration.");
-      }
+      if (existingTeam?.status === "banned") throw new Error("This team is blocked from registration.");
 
       if (existingTeam) {
         const { count, error: countError } = await sb
@@ -540,13 +536,9 @@
           .select("id", { count:"exact", head:true })
           .eq("team_id", existingTeam.id)
           .in("status", ["pending","approved"]);
-
         if (countError) throw countError;
-        if ((count || 0) >= 2) {
-          throw new Error("This team already has the maximum 2 website members.");
-        }
+        if ((count || 0) >= 2) throw new Error("This team already has the maximum 2 website members.");
 
-        // Keep roles coherent: one leader and one sub-leader.
         const { data: sameRole, error: roleError } = await sb
           .from("team_members")
           .select("id")
@@ -554,18 +546,12 @@
           .eq("role", role)
           .in("status", ["pending","approved"])
           .limit(1);
-
         if (roleError) throw roleError;
-
         if ((sameRole || []).length) {
           throw new Error(`This team already has a ${role === "leader" ? "Team Leader / IGL" : "Sub-Leader"}.`);
         }
       }
 
-      /*
-        Registration metadata lets the account finish setup after email confirmation.
-        Logo is uploaded immediately only when a session is returned by signUp().
-      */
       const { data, error } = await sb.auth.signUp({
         email,
         password,
@@ -581,36 +567,27 @@
       });
 
       if (error) throw error;
-      if (!data.user) throw new Error("Supabase did not create the user.");
+      if (!data.user) throw new Error("Supabase did not create the account.");
 
-      if (data.session) {
-        let logoUrl = null;
-        if (logoFile) logoUrl = await uploadLogo(data.user.id, logoFile);
-
-        const { error: rpcError } = await sb.rpc("register_team_member", {
-          p_user_id: data.user.id,
-          p_team_name: teamName,
-          p_member_name: displayName,
-          p_phone: phone,
-          p_role: role,
-          p_logo_url: logoUrl
-        });
-
-        if (rpcError) throw rpcError;
-
-        await sb.auth.signOut();
-        goLogin();
-        showToast("Registration submitted. Wait for admin approval.");
-      } else {
-        /*
-          When email confirmation is enabled, the user must confirm their email.
-          After confirmation, the first successful login completes the profile
-          through the existing RPC using auth metadata.
-        */
-        goLogin();
-        showToast("Account created. Confirm your email, then log in for admin approval.");
+      // REGISTRATION_FIX.sql installs an auth.users trigger. That trigger creates
+      // profiles + team_members immediately, including when email confirmation means
+      // data.session is null. Therefore the admin queue is populated at signup time.
+      if (data.session && logoFile) {
+        const logoUrl = await uploadLogo(data.user.id, logoFile);
+        const { error: logoError } = await sb.from("teams").update({ logo_url: logoUrl }).eq("name", teamName);
+        if (logoError) console.warn("Team logo update failed:", logoError);
       }
 
+      const url = new URL(window.location.href);
+      url.searchParams.delete("register");
+      window.history.replaceState({}, "", url);
+      renderAuth();
+      showToast(
+        data.session
+          ? "Registration submitted. Your application is waiting for admin approval."
+          : "Registration received. Your application is already in the admin approval queue. Check your email if confirmation is requested.",
+        "success"
+      );
     } catch (error) {
       console.error(error);
       showToast(error.message || "Registration failed.", "error");
@@ -1264,7 +1241,7 @@
       <div class="container">
         <div class="page-heading">
           <h2>ADMIN CONTROL CENTER</h2>
-          <p>Manage registrations, teams, practice activity and recruitment posts.</p>
+          <p>Moderate members, teams, practice challenges and recruitment activity from one command center.</p>
         </div>
 
         <div class="quick-grid">
@@ -1358,7 +1335,22 @@
       </div>
     `;
 
+    const pendingCount = state.registrations.filter(p => p.status === "pending").length;
+
     return `
+      ${pendingCount ? `
+        <div class="admin-highlight">
+          <div class="section-kicker">REGISTRATION REVIEW QUEUE</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px">
+            <div><b style="font-size:17px">${pendingCount} Pending Application${pendingCount === 1 ? "" : "s"}</b><div style="font-size:10px;color:#7890a7;margin-top:4px">Approve or reject Team Leader / IGL and Sub-Leader requests.</div></div>
+            <span class="status-pill"><span class="tiny-dot"></span>PENDING</span>
+          </div>
+        </div>` : `
+        <div class="admin-highlight">
+          <div class="section-kicker">REGISTRATION REVIEW QUEUE</div>
+          <div style="margin-top:8px;color:#7990a7;font-size:11px">No pending registration applications.</div>
+        </div>`}
+
       <div class="card">
         <div class="section-title"><h3>Member Registrations</h3><span>${state.registrations.length} ACCOUNTS</span></div>
         <div class="table-shell">
