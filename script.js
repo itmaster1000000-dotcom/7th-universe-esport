@@ -1,4 +1,4 @@
-/* 7TH UNIVERSE ESPORTS — V6
+/* 7TH UNIVERSE ESPORTS — V7
    GVG-style blue esports frontend.
 
    IMPORTANT:
@@ -17,6 +17,10 @@
   const LOGO_BUCKET = "team-logos";
   const RESULT_BUCKET = "result-proofs";
   const MAX_IMAGE_MB = 3;
+
+  if (!window.supabase?.createClient) {
+    throw new Error("Supabase client SDK is unavailable. Refresh the page or check Cloudflare's external script loading.");
+  }
 
   const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     auth: { persistSession:true, autoRefreshToken:true, detectSessionInUrl:true }
@@ -156,5 +160,21 @@
   function bindCards(){document.querySelectorAll("[data-go]").forEach(b=>b.addEventListener("click",()=>{state.section=b.dataset.go;renderMember();}));document.querySelectorAll("[data-wa]").forEach(b=>b.addEventListener("click",()=>{const p=cleanPhone(b.dataset.wa);if(!p)return showToast("No contact number available.","error");window.open(`https://wa.me/${p.replace("+","")}`,"_blank","noopener");}));document.querySelectorAll("[data-json]").forEach(b=>b.addEventListener("click",()=>{const item=JSON.parse(b.dataset.json);const body=Object.entries(item).filter(([k,v])=>!['id','team_id','team_logo_url','created_by'].includes(k)&&v!==null&&v!=="").map(([k,v])=>`<div class="info-box" style="margin-bottom:7px"><small>${esc(k.replaceAll("_"," "))}</small><strong>${esc(Array.isArray(v)?v.join(" • "):String(v))}</strong></div>`).join("");showModal("POST DETAILS",body||`<div class="empty">No additional details.</div>`);}));}
 
   function render(){if(state.screen==="admin-login")renderAdminLogin();else if(state.screen==="member")renderMember();else renderAuth();}
-  hydrateSession().catch(e=>{console.error(e);render();showToast("Website loaded. Please log in.","error");});
+
+  // Render a usable login/registration shell immediately. Do not wait for an
+  // asynchronous Supabase session lookup before painting the page.
+  try {
+    render();
+  } catch (error) {
+    console.error(error);
+    throw error;
+  }
+
+  hydrateSession().catch(e=>{
+    console.error(e);
+    // Keep the already-rendered public login screen visible if session hydration fails.
+    state.screen = new URLSearchParams(location.search).get("register") === "1" ? "register" : "login";
+    try { render(); } catch (_) {}
+    showToast(e.message || "Supabase session check failed. You can still retry login.","error");
+  });
 })();
