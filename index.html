@@ -431,8 +431,59 @@
   </div>
 
   <div id="toast"></div>
+  <div id="bootError" style="display:none;max-width:720px;margin:40px auto;padding:18px;border:1px solid rgba(100,190,255,.22);border-radius:16px;background:#071321;color:#eaf6ff;font-family:Inter,system-ui,sans-serif">
+    <div style="color:#42a9ff;font-size:11px;font-weight:900;letter-spacing:.15em">7TH UNIVERSE ESPORTS</div>
+    <h2 style="margin:8px 0 5px;font-size:20px">Website startup error</h2>
+    <div id="bootErrorText" style="color:#8ba5bd;font-size:12px;line-height:1.6"></div>
+  </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="./script.js?v=esports-v6"></script>
+  <script>
+    (function () {
+      const showBootError = (message) => {
+        const box = document.getElementById('bootError');
+        const text = document.getElementById('bootErrorText');
+        if (box && text) {
+          text.textContent = message;
+          box.style.display = 'block';
+        }
+      };
+
+      const loadSdk = (src) => new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('Could not load Supabase client SDK.'));
+        document.head.appendChild(s);
+      });
+
+      window.addEventListener('error', (event) => {
+        if (event?.error) showBootError(event.error.message || 'A JavaScript error stopped the website.');
+      });
+
+      (async () => {
+        try {
+          if (!window.supabase?.createClient) {
+            try {
+              await loadSdk('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2');
+            } catch (_) {
+              await loadSdk('https://unpkg.com/@supabase/supabase-js@2');
+            }
+          }
+
+          if (!window.supabase?.createClient) {
+            throw new Error('Supabase client SDK is unavailable. Check the external script/CDN access.');
+          }
+
+          const s = document.createElement('script');
+          s.src = './script.js?v=esports-v7';
+          s.defer = true;
+          s.onerror = () => showBootError('script.js could not be loaded. Confirm that script.js is in the same GitHub/Cloudflare folder as index.html.');
+          document.body.appendChild(s);
+        } catch (error) {
+          showBootError(error.message || 'Website startup failed.');
+        }
+      })();
+    })();
+  </script>
 </body>
 </html>
