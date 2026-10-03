@@ -1,1527 +1,244 @@
 /*
-  7TH UNIVERSE ESPORTS — Professional rebuild
-  FREE FIRE • PRACTICE • RECRUITMENT
-
-  Connected to the separate ESPORTS Supabase project.
-  Frontend contains ONLY the Supabase publishable key.
-  Never put a service_role / secret key in this file.
+  7TH UNIVERSE ESPORTS — GVG-STYLE FRONTEND
+  Separate Supabase project: ESPORTS
+  NOTE: this browser client uses the publishable key only.
 */
 
-(() => {
-  "use strict";
+const SUPABASE_URL = 'https://otrjuqcutwlwvzyruhaq.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_ro_4z-4OdgFCda9pT8Z3Pg_UEnY4aTE';
+const LOGO_BUCKET = 'team-logos';
+const MAX_LOGO_SIZE = 3 * 1024 * 1024;
 
-  const SUPABASE_URL = "https://otrjuqcutwlwvzyruhaq.supabase.co";
-  const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_ro_4z-4OdgFCda9pT8Z3Pg_UEnY4aTE";
+const { createClient } = window.supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  auth: { storageKey: '7th-universe-esports-member-v1', autoRefreshToken: true, persistSession: true, detectSessionInUrl: true }
+});
+const adminDb = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  auth: { storageKey: '7th-universe-esports-admin-v1', autoRefreshToken: true, persistSession: true, detectSessionInUrl: false }
+});
 
-  const LOGO_BUCKET = "team-logos";
-  const WHATSAPP_FUNCTION = "post-whatsapp";
-  const MAX_LOGO_MB = 3;
+const state = {
+  user: null,
+  profile: null,
+  team: null,
+  teamMember: null,
+  adminUser: null,
+  adminOk: false,
+  challenges: [],
+  recruitment: [],
+  registrations: [],
+  teams: [],
+  adminChallenges: [],
+  adminRecruitment: [],
+  memberSection: 'overview',
+  adminSection: 'registrations'
+};
 
-  const app = document.getElementById("app");
-  const modal = document.getElementById("modal");
-  const modalTitle = document.getElementById("modalTitle");
-  const modalBody = document.getElementById("modalBody");
-  const modalClose = document.getElementById("modalClose");
-  const toast = document.getElementById("toast");
+const $ = (id) => document.getElementById(id);
+const normalizeContact = (v) => { let n=String(v||'').replace(/\D/g,''); if(n.startsWith('00')) n=n.slice(2); if(n.startsWith('0')) n='92'+n.slice(1); return n; };
+const formatContact = (v) => { const n=normalizeContact(v); if(!n) return ''; return n.startsWith('92') && n.length===12 ? `+92 ${n.slice(2,5)} ${n.slice(5,8)} ${n.slice(8)}` : `+${n}`; };
+const escapeHtml = (v) => String(v ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+const formatDateTime = (v) => { if(!v)return '--'; try{return new Intl.DateTimeFormat('en-PK',{dateStyle:'medium',timeStyle:'short'}).format(new Date(v));}catch{return String(v)} };
+const cleanText = (v,fallback='—') => {const s=String(v??'').trim(); return s||fallback;};
 
-  const sb = window.supabase?.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
-  });
+function showStatus(id, type, message){const e=$(id);if(!e)return;e.className=`status show ${type}`;e.textContent=message;}
+function clearStatus(id){const e=$(id);if(!e)return;e.className='status';e.textContent='';}
+function toast(message,type='success'){const e=$('toast');e.textContent=message;e.className=`show ${type}`;clearTimeout(toast.t);toast.t=setTimeout(()=>e.className='',4500);}
+function openModal(title,html){$('modal').innerHTML=`<div class="modal-head"><div><div class="kicker">7TH UNIVERSE ESPORTS</div><h3 style="margin:4px 0 0;font-family:'Barlow Condensed',sans-serif;font-size:30px">${escapeHtml(title)}</h3></div><button class="close-btn" id="modal-close" type="button">×</button></div>${html}`;$('modal-backdrop').classList.add('open');$('modal-close').onclick=closeModal;}
+function closeModal(){$('modal-backdrop').classList.remove('open');}
+$('modal-backdrop').addEventListener('click',e=>{if(e.target.id==='modal-backdrop')closeModal();});
 
-  const state = {
-    user: null,
-    profile: null,
-    team: null,
-    isAdmin: false,
-    page: "dashboard",
-    adminTab: "registrations",
-    challenges: [],
-    recruitment: [],
-    registrations: [],
-    teams: [],
-    memberCounts: {},
-    registrationMode: false
-  };
+function openView(name){
+  $('public-landing').style.display=['public','register'].includes(name)?'grid':'none';
+  $('public-view').classList.toggle('hidden',name!=='public');
+  $('register-view').classList.toggle('hidden',name!=='register');
+  $('member-dashboard').style.display=name==='member'?'block':'none';
+  $('admin-page').style.display=name==='admin'?'block':'none';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
 
-  const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (m) => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
-  }[m]));
+function renderRules(){
+  const rules=[
+    ['01','Use practice challenges only for genuine competitive play.'],
+    ['02','Challenge audience is EVERYONE; no specific opponent is selected.'],
+    ['03','Keep contact details clear and reachable before posting.'],
+    ['04','Do not post fake, abusive, misleading or spam listings.'],
+    ['05','Recruitment posts must clearly mention the required role.'],
+    ['06','Match time must be realistic and agreed through WhatsApp/contact.'],
+    ['07','One team can have a maximum of 2 website members.'],
+    ['08','Leader / IGL and Sub-Leader are the official member roles.'],
+    ['09','Admin may close, remove or ban any violating post/account.'],
+    ['10','Respect every team, player and 7TH UNIVERSE community member.']
+  ];
+  $('rules-grid').innerHTML=rules.map(([n,t])=>`<div class="rule-item"><div class="rule-no">${n}</div><div class="rule-text">${t}</div></div>`).join('');
+}
 
-  const safeJson = (obj) => esc(JSON.stringify(obj));
+async function currentTeamForUser(userId){
+  const {data,error}=await db.from('team_members').select('id,team_id,user_id,role,status,teams(id,name,logo_url,status,created_at)').eq('user_id',userId).in('status',['pending','approved']).order('created_at',{ascending:false}).limit(1).maybeSingle();
+  if(error)throw error;
+  if(!data)return {team:null,member:null};
+  return {team:data.teams||null,member:data};
+}
 
-  const showToast = (message, type = "success") => {
-    toast.textContent = message;
-    toast.className = `show ${type}`;
-    clearTimeout(showToast.timer);
-    showToast.timer = setTimeout(() => { toast.className = ""; }, 4200);
-  };
-
-  const openModal = (title, body) => {
-    modalTitle.textContent = title;
-    modalBody.innerHTML = body;
-    modal.classList.add("open");
-    modal.setAttribute("aria-hidden", "false");
-  };
-
-  const closeModal = () => {
-    modal.classList.remove("open");
-    modal.setAttribute("aria-hidden", "true");
-  };
-
-  modalClose.addEventListener("click", closeModal);
-  modal.addEventListener("click", (e) => {
-    if (e.target === modal) closeModal();
-  });
-
-  const cleanPhone = (input) => {
-    let v = String(input || "").trim().replace(/[^\d+]/g, "");
-    if (v.startsWith("00")) v = "+" + v.slice(2);
-    if (v.startsWith("03")) v = "+92" + v.slice(1);
-    if (v.startsWith("92")) v = "+" + v;
-    return v;
-  };
-
-  const formatDate = (value) => {
-    if (!value) return "—";
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return "—";
-    return d.toLocaleString("en-PK", { dateStyle: "medium", timeStyle: "short" });
-  };
-
-  const formatRole = (role) => ({
-    admin: "Administrator",
-    leader: "Team Leader / IGL",
-    sub_leader: "Sub-Leader",
-    member: "Member"
-  }[role] || role || "Member");
-
-  const logoHtml = (url, label = "7U") =>
-    url
-      ? `<img class="team-logo" src="${esc(url)}" alt="${esc(label)} logo">`
-      : `<div class="team-logo placeholder">${esc(label.slice(0,3).toUpperCase())}</div>`;
-
-  function ensureClient() {
-    if (!sb) throw new Error("Supabase client failed to initialize.");
+async function hydrateMemberSession(){
+  const {data:{session}}=await db.auth.getSession();
+  state.user=session?.user||null;
+  if(!state.user){state.profile=null;state.team=null;state.teamMember=null;$('nav-logout').classList.add('hidden');openView('public');return;}
+  const {data:profile,error:pe}=await db.from('profiles').select('*').eq('id',state.user.id).maybeSingle();
+  if(pe)throw pe;
+  state.profile=profile;
+  if(!profile){await db.auth.signOut();throw new Error('Account profile is not ready yet.');}
+  if(profile.role==='admin' && profile.status==='approved'){state.adminOk=true;}
+  if(profile.status!=='approved' && !(profile.role==='admin'&&profile.status==='approved')){
+    await db.auth.signOut();
+    openView('public');
+    throw new Error(profile.status==='banned'?'Your account has been banned.':'Your registration is still PENDING admin approval.');
   }
+  const found=await currentTeamForUser(state.user.id);
+  state.team=found.team;state.teamMember=found.member;
+  $('nav-register').classList.add('hidden');$('nav-logout').classList.remove('hidden');
+  if(state.profile){$('member-identity').textContent=`${state.team?.name||state.profile.team_name||'Team'} • ${state.profile.display_name||''} • ${state.profile.role==='leader'?'Team Leader / IGL':'Sub-Leader'}`;}
+  $('member-status-badge').textContent=state.team?.status==='banned'?'TEAM BANNED':'APPROVED MEMBER';
+  $('member-status-badge').className=`badge ${state.team?.status==='banned'?'badge-red':'badge-green'}`;
+  renderTeamCard();
+  renderRules();
+  openView('member');
+  setMemberSection(state.memberSection||'overview');
+}
 
-  async function getProfile(userId) {
-    const { data, error } = await sb.from("profiles").select("*").eq("id", userId).maybeSingle();
-    if (error) throw error;
-    return data;
+db.auth.onAuthStateChange(async(event)=>{
+  if(['SIGNED_IN','SIGNED_OUT','TOKEN_REFRESHED'].includes(event)){
+    try{await hydrateMemberSession();}catch(e){console.error(e);toast(e.message||'Session update failed.','error');}
   }
+});
 
-  async function getTeamForUser(userId) {
-    const { data, error } = await sb
-      .from("team_members")
-      .select(`
-        id,
-        team_id,
-        role,
-        status,
-        teams ( id, name, logo_url, status, created_at )
-      `)
-      .eq("user_id", userId)
-      .in("status", ["pending","approved"])
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+function renderTeamCard(){
+  const box=$('my-team-card'); if(!box)return;
+  const logo=state.team?.logo_url?`<img src="${escapeHtml(state.team.logo_url)}" style="width:64px;height:64px;object-fit:cover;border-radius:15px;border:1px solid rgba(81,178,255,.22)">`:`<div class="preview-icon" style="width:64px;height:64px">7U</div>`;
+  box.innerHTML=`<div style="display:flex;gap:11px;align-items:center">${logo}<div><div class="kicker">Registered Team</div><div style="font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:900">${escapeHtml(state.team?.name||state.profile?.team_name||'—')}</div><div class="subtle">${escapeHtml(state.profile?.display_name||'')} • ${escapeHtml(state.profile?.role||'')}</div></div></div><div class="dashboard-note" style="margin-top:12px"><span><b>Members:</b> 2 maximum</span></div>`;
+}
 
-    if (error) throw error;
-    return data?.teams || null;
-  }
+async function handleLogin(e){
+  e.preventDefault();
+  try{
+    const identifier=$('login-identifier').value.trim();const password=$('login-password').value;
+    if(!identifier||!password)throw new Error('Enter your email/mobile and password.');
+    const credentials=identifier.includes('@')?{email:identifier.toLowerCase(),password}:{phone:normalizeContact(identifier),password};
+    const {data,error}=await db.auth.signInWithPassword(credentials);if(error)throw error;
+    await hydrateMemberSession();
+    toast('Login successful. Welcome to 7TH UNIVERSE ESPORTS.');
+  }catch(err){showStatus('login-status','error',err.message||'Login failed.');}
+}
 
-  async function hydrateSession() {
-    ensureClient();
-    const { data: { session } } = await sb.auth.getSession();
-    state.user = session?.user || null;
+async function handleRegister(e){
+  e.preventDefault();
+  try{
+    const team=$('register-team').value.trim();const role=$('register-role').value;const name=$('register-name').value.trim();const phone=normalizeContact($('register-contact').value);const email=$('register-email').value.trim().toLowerCase();const p=$('register-password').value;const p2=$('register-password-confirm').value;const file=$('register-logo').files?.[0]||null;
+    if(!team||!name||!phone||!email)throw new Error('Complete all required fields.');
+    if(!/^92\d{10}$/.test(phone))throw new Error('Use a valid Pakistan mobile number.');
+    if(p.length<8)throw new Error('Password must be at least 8 characters.');
+    if(p!==p2)throw new Error('Passwords do not match.');
+    if(file){if(file.size>MAX_LOGO_SIZE)throw new Error('Team logo must be 3 MB or smaller.');if(!/^image\/(jpeg|png|webp)$/.test(file.type))throw new Error('Logo must be PNG, JPG or WEBP.');}
 
-    if (!state.user) {
-      state.profile = null;
-      state.team = null;
-      state.isAdmin = false;
-      state.page = "dashboard";
-      renderAuth();
-      return;
+    const {data:existing,error:te}=await db.from('teams').select('id,name,status').ilike('name',team).limit(1).maybeSingle();if(te)throw te;
+    if(existing?.status==='banned')throw new Error('This team is banned and cannot register.');
+    if(existing){
+      const {data:members,error:me}=await db.from('team_members').select('role,status').eq('team_id',existing.id).in('status',['pending','approved']);if(me)throw me;
+      if((members||[]).length>=2)throw new Error('This team already has the maximum 2 website members.');
+      if((members||[]).some(x=>x.role===role))throw new Error(`This team already has a ${role==='leader'?'Team Leader / IGL':'Sub-Leader'}.`);
     }
 
-    try {
-      state.profile = await getProfile(state.user.id);
-
-      /*
-        When Supabase email confirmation is ON, signUp() returns no session.
-        The registration metadata is retained in auth.users. On first login,
-        complete the pending public profile through the existing RPC.
-      */
-      if (!state.profile) {
-        const meta = state.user.user_metadata || {};
-        if (meta.team_name && meta.display_name && meta.requested_role) {
-          const { error: regError } = await sb.rpc("register_team_member", {
-            p_user_id: state.user.id,
-            p_team_name: meta.team_name,
-            p_member_name: meta.display_name,
-            p_phone: meta.phone || null,
-            p_role: meta.requested_role,
-            p_logo_url: meta.logo_url || null
-          });
-          if (regError) throw regError;
-          state.profile = await getProfile(state.user.id);
-        }
-      }
-
-      if (!state.profile) {
-        await sb.auth.signOut();
-        throw new Error("Account profile is missing. Please contact the administrator.");
-      }
-
-      state.isAdmin = state.profile.role === "admin" && state.profile.status === "approved";
-
-      if (!state.isAdmin && state.profile.status !== "approved") {
-        await sb.auth.signOut();
-        throw new Error(
-          state.profile.status === "banned"
-            ? "Your account has been banned."
-            : "Your account is still awaiting administrator approval."
-        );
-      }
-
-      state.team = await getTeamForUser(state.user.id);
-      renderApp();
-    } catch (error) {
-      console.error(error);
-      renderAuth();
-      showToast(error.message || "Could not load your account.", "error");
-    }
-  }
-
-  sb?.auth.onAuthStateChange(async (event) => {
-    if (event === "SIGNED_IN" || event === "SIGNED_OUT" || event === "TOKEN_REFRESHED") {
-      await hydrateSession();
-    }
-  });
-
-  /* ---------------- Public auth ---------------- */
-
-  function renderAuth() {
-    const params = new URLSearchParams(window.location.search);
-    const showRegister = params.get("register") === "1";
-
-    app.innerHTML = `
-      <div class="public-shell">
-        <div class="auth-frame">
-
-          <header class="auth-top">
-            <div class="auth-top-actions left-actions">
-              <button class="auth-action admin" id="adminAccessBtn">ADMIN ACCESS</button>
-            </div>
-
-            <div class="brand">
-              <span>7TH</span><span class="b"> UNIVERSE</span><span class="r"> ESPORTS</span>
-            </div>
-
-            <div class="auth-top-actions right-actions">
-              <div class="member-state">
-                <span class="live-dot"></span>
-                MEMBER ACCESS
-              </div>
-              <button class="auth-action register" id="registerAccessBtn">REGISTER NEW ACCOUNT</button>
-            </div>
-          </header>
-
-          <div class="auth-layout">
-            <section class="auth-copy">
-              <div class="eyebrow">FREE FIRE ESPORTS PLATFORM</div>
-              <h1>
-                <span class="white">7TH</span>
-                <span class="blue"> UNIVERSE</span>
-                <span class="red"> ESPORTS</span>
-              </h1>
-
-              <h2>One platform for serious Free Fire competition.</h2>
-
-              <p>
-                A dedicated Free Fire esports workspace for approved teams and members.
-                Organize Clash Squad practice, publish team or player recruitment requirements,
-                and manage your esports activity from one controlled professional hub.
-              </p>
-
-              <div class="feature-grid">
-                <div class="feature">
-                  <b>CLASH SQUAD PRACTICE</b>
-                  <span>Open practice challenges published for EVERYONE.</span>
-                </div>
-                <div class="feature">
-                  <b>TEAM & PLAYER RECRUITMENT</b>
-                  <span>Find roles, players and competitive opportunities.</span>
-                </div>
-                <div class="feature">
-                  <b>CONTROLLED ACCESS</b>
-                  <span>Members enter after administrator approval.</span>
-                </div>
-                <div class="feature">
-                  <b>TEAM LIMIT</b>
-                  <span>Maximum two website members per team.</span>
-                </div>
-              </div>
-
-              <div class="security-strip">
-                <b>MEMBER AREA:</b> Practice, recruitment, team posts and administration
-                remain inside the authenticated platform.
-              </div>
-            </section>
-
-            <section class="auth-panel">
-              <div class="auth-card">
-                ${showRegister ? registrationForm() : loginForm()}
-              </div>
-            </section>
-          </div>
-        </div>
-      </div>
-    `;
-
-    document.getElementById("registerAccessBtn")?.addEventListener("click", () => {
-      goRegister();
-    });
-
-    document.getElementById("adminAccessBtn")?.addEventListener("click", () => {
-      goLogin("admin");
-    });
-
-    document.getElementById("inlineRegister")?.addEventListener("click", () => {
-      goRegister();
-    });
-
-    document.getElementById("loginForm")?.addEventListener("submit", handleLogin);
-    document.getElementById("registerForm")?.addEventListener("submit", handleRegister);
-    document.getElementById("backToLogin")?.addEventListener("click", () => goLogin());
-  }
-
-  function loginForm() {
-    return `
-      <div class="badge">AUTHORIZED MEMBERS</div>
-      <h3>Member Login</h3>
-      <p class="auth-sub">Sign in with your registered email or mobile number.</p>
-
-      <form id="loginForm">
-        <div class="field">
-          <label>Email / Mobile Number</label>
-          <input id="loginIdentifier" required autocomplete="username"
-                 placeholder="you@email.com or 03XXXXXXXXX">
-        </div>
-
-        <div class="field">
-          <label>Password</label>
-          <input id="loginPassword" type="password" required autocomplete="current-password"
-                 placeholder="Enter your password">
-        </div>
-
-        <button class="btn btn-primary" style="width:100%" type="submit">
-          LOGIN TO 7TH UNIVERSE
-        </button>
-
-        <div class="auth-note">
-          New member?
-          <button class="link-btn" type="button" id="inlineRegister">Register New Account</button>
-        </div>
-      </form>
-    `;
-  }
-
-  function registrationForm() {
-    return `
-      <div class="badge">MEMBER REGISTRATION</div>
-      <h3>Create Member Account</h3>
-      <p class="auth-sub">
-        Register as Team Leader / IGL or Sub-Leader. Every team is limited to two website members.
-      </p>
-
-      <button id="backToLogin" type="button" class="btn btn-dark btn-small" style="margin-bottom:16px">
-        ← BACK TO LOGIN
-      </button>
-
-      <form id="registerForm">
-        <div class="form-grid">
-          <div class="field">
-            <label>Team Name *</label>
-            <input id="regTeamName" maxlength="50" required placeholder="Your team name">
-          </div>
-          <div class="field">
-            <label>Member Role *</label>
-            <select id="regRole" required>
-              <option value="leader">Team Leader / IGL</option>
-              <option value="sub_leader">Sub-Leader</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="form-grid">
-          <div class="field">
-            <label>IGL / Member Name *</label>
-            <input id="regName" maxlength="60" required placeholder="Name">
-          </div>
-          <div class="field">
-            <label>Contact Number *</label>
-            <input id="regPhone" maxlength="20" required placeholder="03XXXXXXXXX">
-          </div>
-        </div>
-
-        <div class="field">
-          <label>Email *</label>
-          <input id="regEmail" type="email" maxlength="120" required placeholder="team@example.com">
-        </div>
-
-        <div class="form-grid">
-          <div class="field">
-            <label>Password *</label>
-            <input id="regPassword" type="password" minlength="8" required placeholder="Minimum 8 characters">
-          </div>
-          <div class="field">
-            <label>Confirm Password *</label>
-            <input id="regPassword2" type="password" minlength="8" required placeholder="Repeat password">
-          </div>
-        </div>
-
-        <div class="field">
-          <label>Team Logo — Optional</label>
-          <input id="regLogo" type="file" accept="image/png,image/jpeg,image/webp">
-          <div class="hint">PNG / JPG / WEBP • Maximum ${MAX_LOGO_MB} MB</div>
-        </div>
-
-        <div class="security-strip" style="margin:0 0 14px">
-          <b>2-MEMBER TEAM RULE:</b> One team can have a maximum of
-          <b>2 website members</b> — normally Leader/IGL + Sub-Leader.
-        </div>
-
-        <button class="btn btn-primary" style="width:100%" type="submit">
-          SUBMIT REGISTRATION
-        </button>
-
-        <div class="auth-note">
-          Administrator approval is required before access is granted.
-        </div>
-      </form>
-    `;
-  }
-
-  function goRegister() {
-    const url = new URL(window.location.href);
-    url.searchParams.set("register", "1");
-    window.history.replaceState({}, "", url);
-    renderAuth();
-  }
-
-  function goLogin(mode = "") {
-    const url = new URL(window.location.href);
-    url.searchParams.delete("register");
-    window.history.replaceState({}, "", url);
-    renderAuth();
-    const input = document.getElementById("loginIdentifier");
-    if (input && mode === "admin") {
-      input.focus();
-      showToast("Use your approved administrator email/mobile and password.");
-    }
-  }
-
-  async function handleLogin(e) {
-    e.preventDefault();
-
-    try {
-      ensureClient();
-
-      const identifier = document.getElementById("loginIdentifier").value.trim();
-      const password = document.getElementById("loginPassword").value;
-
-      if (!identifier || !password) throw new Error("Enter your login details.");
-
-      const credentials = identifier.includes("@")
-        ? { email: identifier.toLowerCase(), password }
-        : { phone: cleanPhone(identifier), password };
-
-      const { data, error } = await sb.auth.signInWithPassword(credentials);
-      if (error) throw error;
-
-      state.user = data.user;
-
-      let profile = await getProfile(data.user.id);
-
-      // Finish a registration that was waiting for email confirmation.
-      if (!profile) {
-        const meta = data.user.user_metadata || {};
-        if (meta.team_name && meta.display_name && meta.requested_role) {
-          const { error: rpcError } = await sb.rpc("register_team_member", {
-            p_user_id: data.user.id,
-            p_team_name: meta.team_name,
-            p_member_name: meta.display_name,
-            p_phone: meta.phone || null,
-            p_role: meta.requested_role,
-            p_logo_url: meta.logo_url || null
-          });
-          if (rpcError) throw rpcError;
-          profile = await getProfile(data.user.id);
-        }
-      }
-
-      if (!profile) {
-        await sb.auth.signOut();
-        throw new Error("Your account profile has not been completed. Contact the administrator.");
-      }
-
-      if (profile.status !== "approved" && profile.role !== "admin") {
-        await sb.auth.signOut();
-        throw new Error(
-          profile.status === "banned"
-            ? "Your account is banned."
-            : "Your registration is pending admin approval."
-        );
-      }
-
-      state.profile = profile;
-      state.isAdmin = profile.role === "admin" && profile.status === "approved";
-      state.team = await getTeamForUser(data.user.id);
-      state.page = "dashboard";
-
-      renderApp();
-      showToast("Login successful. Welcome to 7TH UNIVERSE ESPORTS.");
-    } catch (error) {
-      console.error(error);
-      showToast(error.message || "Login failed.", "error");
-    }
-  }
-
-  async function handleRegister(e) {
-    e.preventDefault();
-
-    try {
-      ensureClient();
-
-      const teamName = document.getElementById("regTeamName").value.trim();
-      const role = document.getElementById("regRole").value;
-      const displayName = document.getElementById("regName").value.trim();
-      const phone = cleanPhone(document.getElementById("regPhone").value);
-      const email = document.getElementById("regEmail").value.trim().toLowerCase();
-      const password = document.getElementById("regPassword").value;
-      const password2 = document.getElementById("regPassword2").value;
-      const logoFile = document.getElementById("regLogo").files?.[0] || null;
-
-      if (!teamName || !displayName || !phone || !email) {
-        throw new Error("Complete all required registration fields.");
-      }
-      if (password.length < 8) throw new Error("Password must be at least 8 characters.");
-      if (password !== password2) throw new Error("Passwords do not match.");
-      if (!/^\+92\d{10}$/.test(phone)) throw new Error("Enter a valid Pakistan mobile number.");
-
-      if (logoFile) {
-        if (logoFile.size > MAX_LOGO_MB * 1024 * 1024) {
-          throw new Error(`Team logo must be ${MAX_LOGO_MB} MB or smaller.`);
-        }
-        if (!/^image\/(png|jpeg|webp)$/.test(logoFile.type)) {
-          throw new Error("Team logo must be PNG, JPG or WEBP.");
-        }
-      }
-
-      // Client-side availability check for instant feedback. The server-side trigger
-      // remains the source of truth for the two-member team rule.
-      const { data: existingTeam, error: teamError } = await sb
-        .from("teams")
-        .select("id,name,status")
-        .ilike("name", teamName)
-        .limit(1)
-        .maybeSingle();
-      if (teamError) throw teamError;
-      if (existingTeam?.status === "banned") throw new Error("This team is blocked from registration.");
-
-      if (existingTeam) {
-        const { count, error: countError } = await sb
-          .from("team_members")
-          .select("id", { count:"exact", head:true })
-          .eq("team_id", existingTeam.id)
-          .in("status", ["pending","approved"]);
-        if (countError) throw countError;
-        if ((count || 0) >= 2) throw new Error("This team already has the maximum 2 website members.");
-
-        const { data: sameRole, error: roleError } = await sb
-          .from("team_members")
-          .select("id")
-          .eq("team_id", existingTeam.id)
-          .eq("role", role)
-          .in("status", ["pending","approved"])
-          .limit(1);
-        if (roleError) throw roleError;
-        if ((sameRole || []).length) {
-          throw new Error(`This team already has a ${role === "leader" ? "Team Leader / IGL" : "Sub-Leader"}.`);
-        }
-      }
-
-      const { data, error } = await sb.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            display_name: displayName,
-            phone,
-            team_name: teamName,
-            requested_role: role,
-            logo_url: null
-          }
-        }
-      });
-
-      if (error) throw error;
-      if (!data.user) throw new Error("Supabase did not create the account.");
-
-      // REGISTRATION_FIX.sql installs an auth.users trigger. That trigger creates
-      // profiles + team_members immediately, including when email confirmation means
-      // data.session is null. Therefore the admin queue is populated at signup time.
-      if (data.session && logoFile) {
-        const logoUrl = await uploadLogo(data.user.id, logoFile);
-        const { error: logoError } = await sb.from("teams").update({ logo_url: logoUrl }).eq("name", teamName);
-        if (logoError) console.warn("Team logo update failed:", logoError);
-      }
-
-      const url = new URL(window.location.href);
-      url.searchParams.delete("register");
-      window.history.replaceState({}, "", url);
-      renderAuth();
-      showToast(
-        data.session
-          ? "Registration submitted. Your application is waiting for admin approval."
-          : "Registration received. Your application is already in the admin approval queue. Check your email if confirmation is requested.",
-        "success"
-      );
-    } catch (error) {
-      console.error(error);
-      showToast(error.message || "Registration failed.", "error");
-    }
-  }
-
-  async function uploadLogo(userId, file) {
-    const ext = file.name.split(".").pop().toLowerCase();
-    const path = `${userId}/${crypto.randomUUID()}.${ext}`;
-
-    const { error } = await sb.storage.from(LOGO_BUCKET).upload(path, file, {
-      cacheControl: "3600",
-      upsert: false,
-      contentType: file.type
-    });
-
-    if (error) throw error;
-
-    return sb.storage.from(LOGO_BUCKET).getPublicUrl(path).data.publicUrl;
-  }
-
-  /* ---------------- App shell ---------------- */
-
-  function renderApp() {
-    app.innerHTML = `
-      <header class="topbar">
-        <div class="container topbar-inner">
-          <div class="brand">
-            <span>7TH</span><span class="b"> UNIVERSE</span><span class="r"> ESPORTS</span>
-          </div>
-
-          <nav class="nav">
-            <button class="nav-btn ${state.page === "dashboard" ? "active" : ""}" data-page="dashboard">DASHBOARD</button>
-            <button class="nav-btn ${state.page === "practice" ? "active" : ""}" data-page="practice">PRACTICE</button>
-            <button class="nav-btn ${state.page === "recruit" ? "active" : ""}" data-page="recruit">RECRUITMENT</button>
-            <button class="nav-btn ${state.page === "my-posts" ? "active" : ""}" data-page="my-posts">MY POSTS</button>
-            ${state.isAdmin ? `<button class="nav-btn ${state.page === "admin" ? "active" : ""}" data-page="admin">ADMIN</button>` : ""}
-            <button class="nav-btn" id="logoutBtn">LOGOUT</button>
-          </nav>
-
-          <div class="profile-chip">
-            ${logoHtml(state.team?.logo_url, state.team?.name || "7U")}
-            <div class="profile-text">
-              <small>${esc(formatRole(state.profile?.role))}</small>
-              <b>${esc(state.team?.name || state.profile?.display_name || "Member")}</b>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main id="pageRoot" class="page">
-        <div class="container"><div class="empty">Loading your esports dashboard...</div></div>
-      </main>
-    `;
-
-    document.querySelectorAll("[data-page]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        state.page = btn.dataset.page;
-        renderApp();
-      });
-    });
-
-    document.getElementById("logoutBtn")?.addEventListener("click", async () => {
-      await sb.auth.signOut();
-    });
-
-    loadPage();
-  }
-
-  async function loadPage() {
-    const root = document.getElementById("pageRoot");
-    if (!root) return;
-
-    try {
-      if (state.page === "dashboard") root.innerHTML = await dashboardPage();
-      else if (state.page === "practice") {
-        root.innerHTML = await practicePage();
-        bindPractice();
-      }
-      else if (state.page === "recruit") {
-        root.innerHTML = recruitPage();
-        bindRecruit();
-      }
-      else if (state.page === "my-posts") root.innerHTML = await myPostsPage();
-      else if (state.page === "admin" && state.isAdmin) {
-        root.innerHTML = await adminPage();
-        bindAdmin();
-      }
-      else {
-        state.page = "dashboard";
-        renderApp();
-      }
-
-      bindCommonCards();
-    } catch (error) {
-      console.error(error);
-      root.innerHTML = `
-        <div class="container">
-          <div class="empty">
-            <div style="font-size:26px">!</div>
-            <div style="margin-top:8px;color:#fff;font-weight:900">${esc(error.message || "Unable to load this section.")}</div>
-          </div>
-        </div>
-      `;
-    }
-  }
-
-  async function getOpenChallenges() {
-    const { data, error } = await sb
-      .from("practice_challenges")
-      .select("*")
-      .eq("status", "open")
-      .order("match_time", { ascending: true })
-      .limit(100);
-    if (error) throw error;
-    state.challenges = data || [];
-    return state.challenges;
-  }
-
-  async function getOpenRecruitment() {
-    const { data, error } = await sb
-      .from("recruitment_posts")
-      .select("*")
-      .eq("status", "open")
-      .order("created_at", { ascending: false })
-      .limit(100);
-    if (error) throw error;
-    state.recruitment = data || [];
-    return state.recruitment;
-  }
-
-  async function dashboardPage() {
-    const [challenges, recruitment] = await Promise.all([
-      getOpenChallenges(),
-      getOpenRecruitment()
-    ]);
-
-    return `
-      <div class="container">
-        <section class="dashboard-hero">
-          <div class="mini">7TH UNIVERSE ESPORTS • MEMBER HUB</div>
-          <h2>${esc(state.team?.name || state.profile?.display_name || "WELCOME")}</h2>
-          <p>
-            Your Free Fire esports workspace. Publish open Clash Squad practice challenges,
-            connect with players/teams through recruitment, and keep your activity organized.
-          </p>
-
-          <div class="hero-actions">
-            <button class="btn btn-primary" data-go="practice">CREATE PRACTICE CHALLENGE</button>
-            <button class="btn btn-dark" data-go="recruit">CREATE RECRUITMENT POST</button>
-            ${state.isAdmin ? `<button class="btn btn-red" data-go="admin">OPEN ADMIN CENTER</button>` : ""}
-          </div>
-        </section>
-
-        <section class="quick-grid">
-          <button class="quick" data-go="practice">
-            <div class="qicon">⚔</div>
-            <b>Practice</b>
-            <span>Open a Free Fire Clash Squad challenge for everyone.</span>
-          </button>
-          <button class="quick" data-go="recruit">
-            <div class="qicon">◎</div>
-            <b>Recruitment</b>
-            <span>Find competitive players or announce team requirements.</span>
-          </button>
-          <button class="quick" data-go="my-posts">
-            <div class="qicon">▣</div>
-            <b>My Posts</b>
-            <span>Review your active and previous website posts.</span>
-          </button>
-          <button class="quick" data-go="dashboard">
-            <div class="qicon">7U</div>
-            <b>Team Area</b>
-            <span>One team, maximum two website members.</span>
-          </button>
-        </section>
-
-        <section class="section">
-          <div class="section-title">
-            <h3>Open Practice Challenges</h3>
-            <span>VISIBLE TO EVERYONE</span>
-          </div>
-          <div class="cards">
-            ${challenges.slice(0,4).map(challengeCard).join("") ||
-              `<div class="empty" style="grid-column:1/-1">No open practice challenges right now.</div>`}
-          </div>
-        </section>
-
-        <section class="section">
-          <div class="section-title">
-            <h3>Active Recruitment</h3>
-            <span>TEAMS + PLAYERS</span>
-          </div>
-          <div class="cards">
-            ${recruitment.slice(0,4).map(recruitmentCard).join("") ||
-              `<div class="empty" style="grid-column:1/-1">No active recruitment posts right now.</div>`}
-          </div>
-        </section>
-      </div>
-    `;
-  }
-
-  function challengeCard(c) {
-    return `
-      <article class="card">
-        <div class="card-top">
-          ${logoHtml(c.team_logo_url, c.team_name || "7U")}
-          <div class="card-title">
-            <h3>${esc(c.team_name)}</h3>
-            <p>FREE FIRE • CLASH SQUAD • EVERYONE</p>
-          </div>
-        </div>
-
-        <div class="badges">
-          <span class="badge2 red">${esc(c.match_type)}</span>
-          <span class="badge2 blue">${esc(c.format)}</span>
-          <span class="badge2 green">OPEN</span>
-          <span class="badge2 blue">EVERYONE</span>
-        </div>
-
-        <div class="info-grid">
-          <div class="info"><small>Match Time</small><b>${esc(formatDate(c.match_time))}</b></div>
-          <div class="info"><small>Contact</small><b>${esc(c.contact || "—")}</b></div>
-        </div>
-
-        ${c.notes ? `<p class="note-text">${esc(c.notes)}</p>` : ""}
-
-        <div class="card-actions">
-          <button class="btn btn-primary btn-small" data-wa="${esc(c.contact || "")}">CONTACT</button>
-          <button class="btn btn-dark btn-small" data-details="${safeJson(c)}">VIEW DETAILS</button>
-        </div>
-      </article>
-    `;
-  }
-
-  function recruitmentCard(r) {
-    const roles = Array.isArray(r.looking_for) ? r.looking_for.join(" • ") : (r.looking_for || "—");
-
-    return `
-      <article class="card">
-        <div class="card-top">
-          ${logoHtml(r.team_logo_url, r.team_name || r.player_ign || "7U")}
-          <div class="card-title">
-            <h3>${esc(r.team_name || r.player_ign || "Player")}</h3>
-            <p>FREE FIRE • ${esc(String(r.listing_type || "").replaceAll("_"," "))}</p>
-          </div>
-        </div>
-
-        <div class="badges">
-          <span class="badge2 blue">${esc(roles)}</span>
-          ${r.players_needed ? `<span class="badge2">${esc(r.players_needed)} NEEDED</span>` : ""}
-          <span class="badge2 green">OPEN</span>
-        </div>
-
-        <div class="info-grid">
-          <div class="info"><small>Availability</small><b>${esc(r.availability || "—")}</b></div>
-          <div class="info"><small>Age</small><b>${esc(r.age_requirement || "—")}</b></div>
-          ${r.player_ign ? `<div class="info"><small>Player IGN</small><b>${esc(r.player_ign)}</b></div>` : ""}
-          ${r.player_uid ? `<div class="info"><small>Free Fire UID</small><b>${esc(r.player_uid)}</b></div>` : ""}
-        </div>
-
-        ${r.notes ? `<p class="note-text">${esc(r.notes)}</p>` : ""}
-
-        <div class="card-actions">
-          <button class="btn btn-primary btn-small" data-wa="${esc(r.contact || "")}">CONTACT</button>
-          <button class="btn btn-dark btn-small" data-details="${safeJson(r)}">VIEW DETAILS</button>
-        </div>
-      </article>
-    `;
-  }
-
-  /* ---------------- Practice ---------------- */
-
-  async function practicePage() {
-    const challenges = await getOpenChallenges();
-
-    return `
-      <div class="container">
-        <div class="page-heading">
-          <h2>CLASH SQUAD PRACTICE</h2>
-          <p>Publish one open challenge. The audience is <b>EVERYONE</b> — there is no specific opponent/team field.</p>
-        </div>
-
-        <div class="card">
-          <div class="section-title" style="margin-bottom:18px">
-            <h3>Create Practice Challenge</h3>
-            <span>FREE FIRE • CLASH SQUAD</span>
-          </div>
-
-          <form id="practiceForm">
-            <div class="form-grid">
-              <div class="field">
-                <label>Match Type *</label>
-                <select id="practiceMatchType" required>
-                  <option value="SINGLE">SINGLE MATCH</option>
-                  <option value="BEST OF 3">BEST OF 3</option>
-                </select>
-              </div>
-
-              <div class="field">
-                <label>Format *</label>
-                <select id="practiceFormat" required>
-                  <option value="SQUAD">SQUAD</option>
-                  <option value="TRIO">TRIO</option>
-                  <option value="DUO">DUO</option>
-                  <option value="SOLO">SOLO</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="form-grid">
-              <div class="field">
-                <label>Match Time *</label>
-                <input id="practiceTime" type="datetime-local" required>
-              </div>
-
-              <div class="field">
-                <label>Contact / WhatsApp *</label>
-                <input id="practiceContact" value="${esc(state.profile?.phone || "")}" maxlength="20" required placeholder="03XXXXXXXXX">
-              </div>
-            </div>
-
-            <div class="field">
-              <label>Additional Notes</label>
-              <textarea id="practiceNotes" maxlength="500" placeholder="Example: Serious competitive teams only."></textarea>
-            </div>
-
-            <div class="security-strip" style="margin:0 0 14px">
-              <b>CHALLENGE AUDIENCE:</b> EVERYONE
-            </div>
-
-            <button class="btn btn-primary" type="submit">POST OPEN CHALLENGE</button>
-          </form>
-        </div>
-
-        <section class="section">
-          <div class="section-title">
-            <h3>Open Challenges</h3>
-            <span>${challenges.length} LISTED</span>
-          </div>
-          <div class="cards">
-            ${challenges.map(challengeCard).join("") ||
-              `<div class="empty" style="grid-column:1/-1">No open challenges available.</div>`}
-          </div>
-        </section>
-      </div>
-    `;
-  }
-
-  function bindPractice() {
-    document.getElementById("practiceForm")?.addEventListener("submit", submitPractice);
-  }
-
-  async function submitPractice(e) {
-    e.preventDefault();
-
-    try {
-      ensureClient();
-      if (!state.team) throw new Error("Approved team membership is required.");
-
-      const localTime = document.getElementById("practiceTime").value;
-      const matchTime = new Date(localTime);
-      if (Number.isNaN(matchTime.getTime())) throw new Error("Choose a valid match time.");
-
-      const contact = cleanPhone(document.getElementById("practiceContact").value);
-      if (!/^\+92\d{10}$/.test(contact)) throw new Error("Enter a valid Pakistan contact number.");
-
-      const { data, error } = await sb.rpc("create_practice_challenge", {
-        p_team_id: state.team.id,
-        p_team_name: state.team.name,
-        p_team_logo_url: state.team.logo_url || null,
-        p_match_type: document.getElementById("practiceMatchType").value,
-        p_match_time: matchTime.toISOString(),
-        p_format: document.getElementById("practiceFormat").value,
-        p_contact: contact,
-        p_notes: document.getElementById("practiceNotes").value.trim() || null
-      });
-
-      if (error) throw error;
-
-      await notifyWhatsApp({ type:"practice_challenge", record_id:data });
-      showToast("Practice challenge posted for EVERYONE.");
-      e.target.reset();
-      await loadPage();
-    } catch (error) {
-      console.error(error);
-      showToast(error.message || "Could not post the challenge.", "error");
-    }
-  }
-
-  /* ---------------- Recruitment ---------------- */
-
-  function recruitPage() {
-    return `
-      <div class="container">
-        <div class="page-heading">
-          <h2>FREE FIRE RECRUITMENT</h2>
-          <p>Create a requirement for your team or publish your own player profile.</p>
-        </div>
-
-        <div class="card">
-          <div class="section-title" style="margin-bottom:18px">
-            <h3>Create Recruitment Post</h3>
-            <span>TEAM + PLAYER</span>
-          </div>
-
-          <form id="recruitForm">
-            <div class="field">
-              <label>Listing Type *</label>
-              <select id="recruitType" required>
-                <option value="TEAM_RECRUITMENT">TEAM RECRUITMENT — We need players</option>
-                <option value="PLAYER_RECRUITMENT">PLAYER RECRUITMENT — I need a team</option>
-              </select>
-            </div>
-
-            <div id="teamModeFields">
-              <div class="form-grid">
-                <div class="field">
-                  <label>Team Name</label>
-                  <input value="${esc(state.team?.name || "")}" disabled>
-                </div>
-                <div class="field">
-                  <label>Players Needed</label>
-                  <select id="recruitPlayersNeeded">
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="field">
-                <label>Looking For *</label>
-                <select id="recruitLookingFor" multiple size="5" required>
-                  <option value="Rusher">Rusher</option>
-                  <option value="Sniper">Sniper</option>
-                  <option value="Support">Support</option>
-                  <option value="Entry Fragger">Entry Fragger</option>
-                  <option value="All-Rounder">All-Rounder</option>
-                </select>
-                <div class="hint">Select one or more roles. On mobile, use your browser's multi-select control.</div>
-              </div>
-            </div>
-
-            <div id="playerModeFields" class="hidden">
-              <div class="form-grid">
-                <div class="field">
-                  <label>Player IGN *</label>
-                  <input id="playerIgn" maxlength="40" placeholder="Free Fire in-game name">
-                </div>
-                <div class="field">
-                  <label>Free Fire UID *</label>
-                  <input id="playerUid" maxlength="20" placeholder="Your UID">
-                </div>
-              </div>
-
-              <div class="field">
-                <label>Preferred Role *</label>
-                <select id="playerRole">
-                  <option value="Rusher">Rusher</option>
-                  <option value="Sniper">Sniper</option>
-                  <option value="Support">Support</option>
-                  <option value="Entry Fragger">Entry Fragger</option>
-                  <option value="All-Rounder">All-Rounder</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="form-grid">
-              <div class="field">
-                <label>Availability *</label>
-                <input id="recruitAvailability" required placeholder="Example: 5 PM – 11 PM">
-              </div>
-              <div class="field">
-                <label>Age / Age Requirement *</label>
-                <input id="recruitAge" required placeholder="Example: 16+">
-              </div>
-            </div>
-
-            <div class="form-grid">
-              <div class="field">
-                <label>Contact / WhatsApp *</label>
-                <input id="recruitContact" required value="${esc(state.profile?.phone || "")}" placeholder="03XXXXXXXXX">
-              </div>
-              <div class="field">
-                <label>Experience (Optional)</label>
-                <input id="recruitExperience" maxlength="160" placeholder="Example: 2 years competitive CS">
-              </div>
-            </div>
-
-            <div class="field">
-              <label>Extra Details</label>
-              <textarea id="recruitNotes" maxlength="600" placeholder="Requirements, trial details, preferred timings, etc."></textarea>
-            </div>
-
-            <button class="btn btn-primary" type="submit">PUBLISH RECRUITMENT</button>
-          </form>
-        </div>
-      </div>
-    `;
-  }
-
-  function bindRecruit() {
-    const type = document.getElementById("recruitType");
-    type?.addEventListener("change", toggleRecruitMode);
-    document.getElementById("recruitForm")?.addEventListener("submit", submitRecruitment);
-    toggleRecruitMode();
-  }
-
-  function toggleRecruitMode() {
-    const type = document.getElementById("recruitType")?.value;
-    const teamMode = type === "TEAM_RECRUITMENT";
-
-    document.getElementById("teamModeFields")?.classList.toggle("hidden", !teamMode);
-    document.getElementById("playerModeFields")?.classList.toggle("hidden", teamMode);
-
-    const playerIgn = document.getElementById("playerIgn");
-    const playerUid = document.getElementById("playerUid");
-
-    if (playerIgn) playerIgn.required = !teamMode;
-    if (playerUid) playerUid.required = !teamMode;
-  }
-
-  async function submitRecruitment(e) {
-    e.preventDefault();
-
-    try {
-      ensureClient();
-
-      const type = document.getElementById("recruitType").value;
-      const contact = cleanPhone(document.getElementById("recruitContact").value);
-      if (!/^\+92\d{10}$/.test(contact)) throw new Error("Enter a valid Pakistan contact number.");
-
-      let lookingFor = [];
-      let playerIgn = null;
-      let playerUid = null;
-
-      if (type === "TEAM_RECRUITMENT") {
-        if (!state.team) throw new Error("Approved team membership is required.");
-        lookingFor = [...document.getElementById("recruitLookingFor").selectedOptions].map(o => o.value);
-        if (!lookingFor.length) throw new Error("Select at least one required role.");
-      } else {
-        playerIgn = document.getElementById("playerIgn").value.trim();
-        playerUid = document.getElementById("playerUid").value.trim();
-        lookingFor = [document.getElementById("playerRole").value];
-        if (!playerIgn || !playerUid) throw new Error("Player IGN and UID are required.");
-      }
-
-      const { data, error } = await sb.rpc("create_recruitment_post", {
-        p_team_id: state.team?.id || null,
-        p_team_name: state.team?.name || playerIgn,
-        p_team_logo_url: state.team?.logo_url || null,
-        p_listing_type: type,
-        p_looking_for: lookingFor,
-        p_players_needed: type === "TEAM_RECRUITMENT"
-          ? Number(document.getElementById("recruitPlayersNeeded").value)
-          : 1,
-        p_availability: document.getElementById("recruitAvailability").value.trim(),
-        p_age_requirement: document.getElementById("recruitAge").value.trim(),
-        p_contact: contact,
-        p_experience: document.getElementById("recruitExperience").value.trim() || null,
-        p_player_ign: playerIgn,
-        p_player_uid: playerUid,
-        p_notes: document.getElementById("recruitNotes").value.trim() || null
-      });
-
-      if (error) throw error;
-
-      await notifyWhatsApp({ type:"recruitment", record_id:data });
-      showToast("Recruitment post published.");
-      e.target.reset();
-      await loadPage();
-    } catch (error) {
-      console.error(error);
-      showToast(error.message || "Could not publish recruitment.", "error");
-    }
-  }
-
-  /* ---------------- My posts ---------------- */
-
-  async function myPostsPage() {
-    if (!state.team) {
-      return `
-        <div class="container">
-          <div class="empty">
-            <b>No approved team membership is attached to this account.</b>
-          </div>
-        </div>
-      `;
+    const {data,error}=await db.auth.signUp({email,password:p,options:{data:{display_name:name,phone,team_name:team,requested_role:role}}});
+    if(error)throw error;
+    if(!data.user)throw new Error('Registration could not be created.');
+
+    /* The database trigger created in REGISTRATION_FIX.sql creates the pending
+       profile/team/team_member record from auth metadata. We intentionally do
+       not duplicate that insert here. */
+    if(file && data.session){
+      try{const logoUrl=await uploadLogo(data.user.id,file);await db.from('teams').update({logo_url:logoUrl}).eq('name',team);}catch(uploadError){console.warn('Logo upload failed:',uploadError);}
     }
 
-    const [ch, rec] = await Promise.all([
-      sb.from("practice_challenges").select("*").eq("team_id", state.team.id).order("created_at",{ascending:false}),
-      sb.from("recruitment_posts").select("*").eq("team_id", state.team.id).order("created_at",{ascending:false})
-    ]);
+    if(data.session)await db.auth.signOut();
+    $('register-form').reset();
+    openView('public');
+    $('register-status').className='status';
+    showStatus('login-status','ok','Registration submitted successfully. Your account is now PENDING for admin approval.');
+  }catch(err){showStatus('register-status','error',err.message||'Registration failed.');}
+}
 
-    if (ch.error) throw ch.error;
-    if (rec.error) throw rec.error;
+async function uploadLogo(userId,file){const ext=file.name.split('.').pop().toLowerCase();const path=`${userId}/${crypto.randomUUID()}.${ext}`;const {error}=await db.storage.from(LOGO_BUCKET).upload(path,file,{upsert:false,contentType:file.type,cacheControl:'3600'});if(error)throw error;return db.storage.from(LOGO_BUCKET).getPublicUrl(path).data.publicUrl;}
 
-    return `
-      <div class="container">
-        <div class="page-heading">
-          <h2>MY POSTS</h2>
-          <p>${esc(state.team.name)} • Practice and recruitment activity.</p>
-        </div>
+async function forgotPassword(){
+  const email=prompt('Enter your registered email address:');if(!email)return;
+  const {error}=await db.auth.resetPasswordForEmail(email.trim().toLowerCase(),{redirectTo:window.location.origin});
+  if(error)toast(error.message,'error');else toast('Password reset email sent if the account exists.');
+}
 
-        <section class="section">
-          <div class="section-title"><h3>Practice Challenges</h3><span>${(ch.data||[]).length} POSTS</span></div>
-          <div class="cards">
-            ${(ch.data||[]).map(challengeCard).join("") ||
-              `<div class="empty" style="grid-column:1/-1">No practice posts yet.</div>`}
-          </div>
-        </section>
+function setMemberSection(name){
+  const valid=['overview','practice','recruitment','my-posts'];const section=valid.includes(name)?name:'overview';state.memberSection=section;
+  document.querySelectorAll('.member-view').forEach(x=>x.classList.toggle('active',x.id===`member-section-${section}`));
+  document.querySelectorAll('[data-member-section]').forEach(x=>x.classList.toggle('active',x.dataset.memberSection===section));
+  if(section==='practice')loadChallenges();
+  if(section==='recruitment')loadRecruitment();
+  if(section==='my-posts')loadMyPosts();
+}
 
-        <section class="section">
-          <div class="section-title"><h3>Recruitment</h3><span>${(rec.data||[]).length} POSTS</span></div>
-          <div class="cards">
-            ${(rec.data||[]).map(recruitmentCard).join("") ||
-              `<div class="empty" style="grid-column:1/-1">No recruitment posts yet.</div>`}
-          </div>
-        </section>
-      </div>
-    `;
-  }
+async function loadChallenges(){const {data,error}=await db.from('practice_challenges').select('*').eq('status','open').order('match_time',{ascending:true}).limit(100);if(error)throw error;state.challenges=data||[];$('live-challenge-list').innerHTML=state.challenges.map(challengeCard).join('')||'<div class="empty">No open practice challenges right now.</div>';}
+async function loadRecruitment(){const {data,error}=await db.from('recruitment_posts').select('*').eq('status','open').order('created_at',{ascending:false}).limit(100);if(error)throw error;state.recruitment=data||[];$('live-recruitment-list').innerHTML=state.recruitment.map(recruitmentCard).join('')||'<div class="empty">No active recruitment posts right now.</div>';}
 
-  /* ---------------- Admin ---------------- */
+function challengeCard(c){return `<div class="challenge-card"><div class="meta-row"><div><div class="name">${escapeHtml(c.team_name)}</div><div class="subtle">FREE FIRE • CLASH SQUAD</div></div><span class="badge badge-green">EVERYONE</span></div><div class="pill-wrap"><span class="pill">${escapeHtml(c.match_type)}</span><span class="pill">${escapeHtml(c.format)}</span><span class="pill">OPEN</span></div><div class="challenge-time">${escapeHtml(formatDateTime(c.match_time))}</div>${c.notes?`<div class="subtle" style="margin-top:8px">${escapeHtml(c.notes)}</div>`:''}<div class="contact-line"><span style="color:#6e8ba4;font-size:9px">${escapeHtml(formatContact(c.contact))}</span><button class="contact-link" data-contact="${escapeHtml(c.contact)}">WHATSAPP</button></div></div>`;}
+function recruitmentCard(r){const roles=Array.isArray(r.looking_for)?r.looking_for.join(' • '):cleanText(r.looking_for);return `<div class="challenge-card"><div class="meta-row"><div><div class="name">${escapeHtml(r.team_name||r.player_ign||'PLAYER')}</div><div class="subtle">FREE FIRE • ${escapeHtml(String(r.listing_type||'').replaceAll('_',' '))}</div></div><span class="badge badge-blue">OPEN</span></div><div class="pill-wrap"><span class="pill">${escapeHtml(roles)}</span>${r.players_needed?`<span class="pill">${escapeHtml(r.players_needed)} NEEDED</span>`:''}</div><div class="info-grid" style="margin-top:10px"><div class="info"><small>Availability</small><b>${escapeHtml(r.availability||'—')}</b></div><div class="info"><small>Age</small><b>${escapeHtml(r.age_requirement||'—')}</b></div></div>${r.notes?`<div class="subtle" style="margin-top:8px">${escapeHtml(r.notes)}</div>`:''}<div class="contact-line"><span style="color:#6e8ba4;font-size:9px">${escapeHtml(formatContact(r.contact))}</span><button class="contact-link" data-contact="${escapeHtml(r.contact)}">CONTACT</button></div></div>`;}
 
-  async function adminPage() {
-    const [profiles, teams, challenges, recruitment] = await Promise.all([
-      sb.from("profiles").select("*").neq("role","admin").order("created_at",{ascending:false}).limit(250),
-      sb.from("teams").select("*").order("created_at",{ascending:false}).limit(250),
-      sb.from("practice_challenges").select("*").order("created_at",{ascending:false}).limit(250),
-      sb.from("recruitment_posts").select("*").order("created_at",{ascending:false}).limit(250)
-    ]);
+async function submitChallenge(e){e.preventDefault();try{if(!state.team)throw new Error('Approved team membership is required.');const tm=$('challenge-time').value;const d=new Date(tm);if(Number.isNaN(d.getTime()))throw new Error('Select a valid match time.');const contact=normalizeContact($('challenge-contact').value);if(!/^92\d{10}$/.test(contact))throw new Error('Use a valid Pakistan contact number.');const {error}=await db.rpc('create_practice_challenge',{p_team_id:state.team.id,p_team_name:state.team.name,p_team_logo_url:state.team.logo_url||null,p_match_type:$('challenge-match-type').value,p_match_time:d.toISOString(),p_format:$('challenge-format').value,p_contact:contact,p_notes:$('challenge-notes').value.trim()||null});if(error)throw error;showStatus('challenge-status','ok','Practice challenge posted for EVERYONE.');$('challenge-form').reset();$('challenge-contact').value=state.profile.phone||'';await loadChallenges();}catch(err){showStatus('challenge-status','error',err.message||'Could not post challenge.');}}
 
-    if (profiles.error) throw profiles.error;
-    if (teams.error) throw teams.error;
-    if (challenges.error) throw challenges.error;
-    if (recruitment.error) throw recruitment.error;
+function toggleRecruitmentMode(){const teamMode=$('recruitment-type').value==='TEAM_RECRUITMENT';$('team-recruit-fields').classList.toggle('hidden',!teamMode);$('player-recruit-fields').classList.toggle('hidden',teamMode);$('player-ign').required=!teamMode;$('player-uid').required=!teamMode;}
+async function submitRecruitment(e){e.preventDefault();try{const type=$('recruitment-type').value;const contact=normalizeContact($('recruit-contact').value);if(!/^92\d{10}$/.test(contact))throw new Error('Use a valid Pakistan contact number.');let lookingFor=[];let playerIgn=null;let playerUid=null;if(type==='TEAM_RECRUITMENT'){if(!state.team)throw new Error('Approved team membership is required.');lookingFor=[...$('recruit-looking-for').selectedOptions].map(o=>o.value);if(!lookingFor.length)throw new Error('Select at least one role.');}else{playerIgn=$('player-ign').value.trim();playerUid=$('player-uid').value.trim();lookingFor=[$('player-role').value];if(!playerIgn||!playerUid)throw new Error('Player IGN and UID are required.');}const {error}=await db.rpc('create_recruitment_post',{p_team_id:state.team?.id||null,p_team_name:state.team?.name||playerIgn,p_team_logo_url:state.team?.logo_url||null,p_listing_type:type,p_looking_for:lookingFor,p_players_needed:type==='TEAM_RECRUITMENT'?Number($('recruit-players-needed').value):1,p_availability:$('recruit-availability').value.trim(),p_age_requirement:$('recruit-age').value.trim(),p_contact:contact,p_experience:$('recruit-experience').value.trim()||null,p_player_ign:playerIgn,p_player_uid:playerUid,p_notes:$('recruit-notes').value.trim()||null});if(error)throw error;showStatus('recruitment-status','ok','Recruitment post published successfully.');$('recruitment-form').reset();$('recruit-contact').value=state.profile.phone||'';toggleRecruitmentMode();await loadRecruitment();}catch(err){showStatus('recruitment-status','error',err.message||'Could not publish recruitment.');}}
 
-    state.registrations = profiles.data || [];
-    state.teams = teams.data || [];
-    state.challenges = challenges.data || [];
-    state.recruitment = recruitment.data || [];
+async function loadMyPosts(){if(!state.team){$('my-posts-list').innerHTML='<div class="empty">No approved team attached.</div>';return;}const [a,b]=await Promise.all([db.from('practice_challenges').select('*').eq('team_id',state.team.id).order('created_at',{ascending:false}).limit(20),db.from('recruitment_posts').select('*').eq('team_id',state.team.id).order('created_at',{ascending:false}).limit(20)]);if(a.error)throw a.error;if(b.error)throw b.error;const rows=[...(a.data||[]).map(x=>({kind:'PRACTICE',data:x})),...(b.data||[]).map(x=>({kind:'RECRUITMENT',data:x}))].sort((x,y)=>new Date(y.data.created_at)-new Date(x.data.created_at));$('my-posts-list').innerHTML=rows.map(x=>`<div class="challenge-card"><div class="meta-row"><strong>${escapeHtml(x.kind)}</strong><span class="badge ${x.data.status==='open'?'badge-green':'badge-gray'}">${escapeHtml(x.data.status)}</span></div><div style="margin-top:7px;font-size:12px;color:#b7cadc">${escapeHtml(x.data.team_name||x.data.player_ign||'—')}</div><div class="subtle">Created ${escapeHtml(formatDateTime(x.data.created_at))}</div></div>`).join('')||'<div class="empty">No posts yet.</div>';}
 
-    const pending = state.registrations.filter(x => x.status === "pending").length;
-    const banned = state.registrations.filter(x => x.status === "banned").length;
+/* ---------------- ADMIN ---------------- */
+async function openAdmin(){openView('admin');const {data:{session}}=await adminDb.auth.getSession();state.adminUser=session?.user||null;if(!state.adminUser){$('admin-login-view').classList.remove('hidden');$('admin-dashboard').classList.add('hidden');return;}const p=await adminDb.from('profiles').select('*').eq('id',state.adminUser.id).maybeSingle();if(p.error)throw p.error;if(!p.data||p.data.role!=='admin'||p.data.status!=='approved'){await adminDb.auth.signOut();state.adminOk=false;throw new Error('This account is not an approved admin.');}state.adminOk=true;$('admin-login-view').classList.add('hidden');$('admin-dashboard').classList.remove('hidden');$('admin-session-label').textContent=`Authenticated • ${p.data.display_name||state.adminUser.email||''}`;loadAdminSection(state.adminSection);}
+async function handleAdminLogin(e){e.preventDefault();try{const {data,error}=await adminDb.auth.signInWithPassword({email:$('admin-email').value.trim().toLowerCase(),password:$('admin-password').value});if(error)throw error;state.adminUser=data.user;await openAdmin();toast('Admin login successful.');}catch(err){showStatus('admin-login-status','error',err.message||'Admin login failed.');}}
+async function loadAdminSection(section){state.adminSection=section;document.querySelectorAll('.admin-panel-view').forEach(x=>x.classList.toggle('active',x.id===`admin-section-${section}`));document.querySelectorAll('.admin-tab').forEach(x=>x.classList.toggle('active',x.dataset.adminSection===section));if(section==='registrations')return loadAdminRegistrations();if(section==='teams')return loadAdminTeams();if(section==='practice')return loadAdminPractice();if(section==='recruitment')return loadAdminRecruitment();}
+async function loadAdminRegistrations(){const {data,error}=await adminDb.from('profiles').select('*').neq('role','admin').order('created_at',{ascending:false}).limit(300);if(error)throw error;state.registrations=data||[];const pending=state.registrations.filter(p=>p.status==='pending');$('pending-registration-table').innerHTML=pending.map(p=>`<tr><td><strong>${escapeHtml(p.display_name)}</strong><div class="subtle">${escapeHtml(p.phone||'')}</div></td><td>${escapeHtml(p.team_name||'—')}</td><td>${escapeHtml(p.role==='leader'?'Leader / IGL':'Sub-Leader')}</td><td><span class="badge badge-red">PENDING</span></td><td><div class="admin-actions"><button class="btn btn-green btn-small" data-approve="${p.id}">APPROVE</button><button class="btn btn-red btn-small" data-reject="${p.id}">REJECT</button></div></td></tr>`).join('')||'<tr><td colspan="5"><div class="empty">No pending registrations.</div></td></tr>';}
+async function loadAdminTeams(){const {data,error}=await adminDb.from('teams').select('*').order('created_at',{ascending:false}).limit(300);if(error)throw error;state.teams=data||[];const q=($('admin-team-search').value||'').trim().toLowerCase();const filtered=state.teams.filter(t=>!q||String(t.name).toLowerCase().includes(q));const counts=await Promise.all(filtered.map(async t=>{const r=await adminDb.from('team_members').select('id',{count:'exact',head:true}).eq('team_id',t.id).in('status',['pending','approved']);return {id:t.id,count:r.count||0};}));const map=Object.fromEntries(counts.map(x=>[x.id,x.count]));$('all-teams-table').innerHTML=filtered.map(t=>`<tr><td><div class="member-cell">${t.logo_url?`<img class="mini-logo" src="${escapeHtml(t.logo_url)}">`:`<div class="mini-logo ph">7U</div>`}<strong>${escapeHtml(t.name)}</strong></div></td><td>${map[t.id]||0} / 2</td><td><span class="badge ${t.status==='active'?'badge-green':'badge-red'}">${escapeHtml(t.status)}</span></td><td><button class="btn btn-dark btn-small" data-team-toggle="${t.id}" data-next="${t.status==='active'?'banned':'active'}">${t.status==='active'?'BAN':'UNBAN'}</button></td></tr>`).join('')||'<tr><td colspan="4">No teams found.</td></tr>';}
+async function loadAdminPractice(){const {data,error}=await adminDb.from('practice_challenges').select('*').order('created_at',{ascending:false}).limit(300);if(error)throw error;state.adminChallenges=data||[];$('admin-practice-table').innerHTML=state.adminChallenges.map(c=>`<tr><td>${escapeHtml(c.team_name)}</td><td>${escapeHtml(c.match_type)}</td><td>${escapeHtml(c.format)}</td><td>${escapeHtml(formatDateTime(c.match_time))}</td><td><span class="badge ${c.status==='open'?'badge-green':'badge-gray'}">${escapeHtml(c.status)}</span></td><td><button class="btn btn-dark btn-small" data-challenge-toggle="${c.id}" data-next="${c.status==='open'?'closed':'open'}">${c.status==='open'?'CLOSE':'REOPEN'}</button></td></tr>`).join('')||'<tr><td colspan="6">No challenges.</td></tr>';}
+async function loadAdminRecruitment(){const {data,error}=await adminDb.from('recruitment_posts').select('*').order('created_at',{ascending:false}).limit(300);if(error)throw error;state.adminRecruitment=data||[];$('admin-recruitment-table').innerHTML=state.adminRecruitment.map(r=>`<tr><td>${escapeHtml(r.team_name||r.player_ign||'—')}</td><td>${escapeHtml(String(r.listing_type||'').replaceAll('_',' '))}</td><td>${escapeHtml(Array.isArray(r.looking_for)?r.looking_for.join(', '):cleanText(r.looking_for))}</td><td><span class="badge ${r.status==='open'?'badge-green':'badge-gray'}">${escapeHtml(r.status)}</span></td><td><button class="btn btn-dark btn-small" data-recruit-toggle="${r.id}" data-next="${r.status==='open'?'closed':'open'}">${r.status==='open'?'CLOSE':'REOPEN'}</button></td></tr>`).join('')||'<tr><td colspan="5">No recruitment posts.</td></tr>';}
 
-    return `
-      <div class="container">
-        <div class="page-heading">
-          <h2>ADMIN CONTROL CENTER</h2>
-          <p>Moderate members, teams, practice challenges and recruitment activity from one command center.</p>
-        </div>
+async function approveMember(id,status){try{const {data:profile,error:pe}=await adminDb.from('profiles').select('id,team_name,role').eq('id',id).maybeSingle();if(pe)throw pe;if(!profile)throw new Error('Registration not found.');const {error}=await adminDb.from('profiles').update({status}).eq('id',id);if(error)throw error;const team=await adminDb.from('teams').select('id').ilike('name',profile.team_name).maybeSingle();if(team.data?.id){await adminDb.from('team_members').update({status}).eq('user_id',id).eq('team_id',team.data.id);}toast(`Registration ${status}.`);await loadAdminRegistrations();}catch(err){showStatus('admin-status','error',err.message||'Could not update registration.');}}
+async function toggleTeam(id,status){try{const {error}=await adminDb.from('teams').update({status}).eq('id',id);if(error)throw error;toast(`Team ${status}.`);await loadAdminTeams();}catch(err){showStatus('admin-status','error',err.message||'Could not update team.');}}
+async function togglePost(table,id,status){try{const {error}=await adminDb.from(table).update({status}).eq('id',id);if(error)throw error;toast(`Post ${status}.`);if(table==='practice_challenges')await loadAdminPractice();else await loadAdminRecruitment();}catch(err){showStatus('admin-status','error',err.message||'Could not update post.');}}
 
-        <div class="quick-grid">
-          <div class="quick"><div class="qicon">${pending}</div><b>Pending</b><span>Registrations waiting for approval.</span></div>
-          <div class="quick"><div class="qicon">${state.teams.length}</div><b>Teams</b><span>Registered esports teams.</span></div>
-          <div class="quick"><div class="qicon">${state.challenges.length}</div><b>Practice</b><span>Total practice challenge records.</span></div>
-          <div class="quick"><div class="qicon">${banned}</div><b>Banned</b><span>Member accounts currently blocked.</span></div>
-        </div>
+/* ---------------- Events ---------------- */
+$('login-form').addEventListener('submit',handleLogin);
+$('register-form').addEventListener('submit',handleRegister);
+$('forgot-password').addEventListener('click',forgotPassword);
+$('challenge-form').addEventListener('submit',submitChallenge);
+$('recruitment-form').addEventListener('submit',submitRecruitment);
+$('recruitment-type').addEventListener('change',toggleRecruitmentMode);
+$('nav-register').addEventListener('click',()=>openView('register'));
+$('back-login').addEventListener('click',()=>openView('public'));
+$('nav-admin').addEventListener('click',()=>openAdmin().catch(e=>toast(e.message||'Admin access failed.','error')));
+$('nav-logout').addEventListener('click',async()=>{await db.auth.signOut();await adminDb.auth.signOut();location.reload();});
+$('admin-login-form').addEventListener('submit',handleAdminLogin);
+$('admin-back').addEventListener('click',()=>openView('public'));
+$('admin-logout').addEventListener('click',async()=>{await adminDb.auth.signOut();state.adminUser=null;state.adminOk=false;openView('public');toast('Admin logged out.');});
 
-        <div class="admin-layout" style="margin-top:18px">
-          <aside class="admin-nav">
-            <button class="${state.adminTab==="registrations"?"active":""}" data-admin-tab="registrations">REGISTRATIONS</button>
-            <button class="${state.adminTab==="teams"?"active":""}" data-admin-tab="teams">TEAMS</button>
-            <button class="${state.adminTab==="practice"?"active":""}" data-admin-tab="practice">PRACTICE</button>
-            <button class="${state.adminTab==="recruitment"?"active":""}" data-admin-tab="recruitment">RECRUITMENT</button>
-          </aside>
+document.querySelectorAll('[data-member-section]').forEach(btn=>btn.addEventListener('click',()=>setMemberSection(btn.dataset.memberSection)));
+document.querySelectorAll('[data-admin-section]').forEach(btn=>btn.addEventListener('click',()=>loadAdminSection(btn.dataset.adminSection).catch(e=>showStatus('admin-status','error',e.message||'Admin section failed.'))));
 
-          <section>
-            ${adminTabContent()}
-          </section>
-        </div>
-      </div>
-    `;
-  }
+document.addEventListener('click',async(e)=>{
+  const contact=e.target.closest('[data-contact]');if(contact){const n=normalizeContact(contact.dataset.contact);if(n)window.open(`https://wa.me/${n}`,'_blank','noopener');}
+  const approve=e.target.closest('[data-approve]');if(approve)await approveMember(approve.dataset.approve,'approved');
+  const reject=e.target.closest('[data-reject]');if(reject)await approveMember(reject.dataset.reject,'rejected');
+  const team=e.target.closest('[data-team-toggle]');if(team)await toggleTeam(team.dataset.teamToggle,team.dataset.next);
+  const ch=e.target.closest('[data-challenge-toggle]');if(ch)await togglePost('practice_challenges',ch.dataset.challengeToggle,ch.dataset.next);
+  const rec=e.target.closest('[data-recruit-toggle]');if(rec)await togglePost('recruitment_posts',rec.dataset.recruitToggle,rec.dataset.next);
+});
+$('admin-team-search').addEventListener('input',()=>loadAdminTeams().catch(e=>showStatus('admin-status','error',e.message||'Search failed.')));
 
-  function adminTabContent() {
-    if (state.adminTab === "teams") return `
-      <div class="card">
-        <div class="section-title"><h3>Teams</h3><span>${state.teams.length} TOTAL</span></div>
-        <div class="table-shell">
-          <table>
-            <thead><tr><th>Team</th><th>Status</th><th>Created</th><th>Control</th></tr></thead>
-            <tbody>
-              ${state.teams.map(t => `
-                <tr>
-                  <td><div style="display:flex;align-items:center;gap:9px">${t.logo_url ? `<img src="${esc(t.logo_url)}" style="width:34px;height:34px;border-radius:9px;border:1px solid #214460;object-fit:cover">` : `<div style="width:34px;height:34px;border-radius:9px;background:#091321;display:grid;place-items:center;color:#74baff;font-weight:900">7U</div>`}<strong>${esc(t.name)}</strong></div></td>
-                  <td><span class="badge2 ${t.status==="active"?"green":"red"}">${esc(t.status)}</span></td>
-                  <td>${esc(formatDate(t.created_at))}</td>
-                  <td><button class="btn btn-dark btn-small" data-team-status="${esc(t.id)}" data-next="${t.status==="banned"?"active":"banned"}">${t.status==="banned"?"UNBAN":"BAN"}</button></td>
-                </tr>
-              `).join("") || `<tr><td colspan="4">No teams found.</td></tr>`}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `;
+toggleRecruitmentMode();
+renderRules();
 
-    if (state.adminTab === "practice") return `
-      <div class="card">
-        <div class="section-title"><h3>Practice Challenges</h3><span>${state.challenges.length} TOTAL</span></div>
-        <div class="table-shell">
-          <table>
-            <thead><tr><th>Team</th><th>Type</th><th>Format</th><th>Time</th><th>Status</th><th>Control</th></tr></thead>
-            <tbody>
-              ${state.challenges.map(c => `
-                <tr>
-                  <td>${esc(c.team_name)}</td>
-                  <td>${esc(c.match_type)}</td>
-                  <td>${esc(c.format)}</td>
-                  <td>${esc(formatDate(c.match_time))}</td>
-                  <td><span class="badge2 ${c.status==="open"?"green":"red"}">${esc(c.status)}</span></td>
-                  <td><button class="btn btn-dark btn-small" data-challenge-status="${esc(c.id)}" data-next="${c.status==="open"?"closed":"open"}">${c.status==="open"?"CLOSE":"REOPEN"}</button></td>
-                </tr>
-              `).join("") || `<tr><td colspan="6">No challenges found.</td></tr>`}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `;
-
-    if (state.adminTab === "recruitment") return `
-      <div class="card">
-        <div class="section-title"><h3>Recruitment Posts</h3><span>${state.recruitment.length} TOTAL</span></div>
-        <div class="table-shell">
-          <table>
-            <thead><tr><th>Listing</th><th>Type</th><th>Looking For</th><th>Availability</th><th>Status</th><th>Control</th></tr></thead>
-            <tbody>
-              ${state.recruitment.map(r => `
-                <tr>
-                  <td>${esc(r.team_name || r.player_ign || "—")}</td>
-                  <td>${esc(r.listing_type)}</td>
-                  <td>${esc(Array.isArray(r.looking_for) ? r.looking_for.join(", ") : r.looking_for || "—")}</td>
-                  <td>${esc(r.availability || "—")}</td>
-                  <td><span class="badge2 ${r.status==="open"?"green":"red"}">${esc(r.status)}</span></td>
-                  <td><button class="btn btn-dark btn-small" data-recruit-status="${esc(r.id)}" data-next="${r.status==="open"?"closed":"open"}">${r.status==="open"?"CLOSE":"REOPEN"}</button></td>
-                </tr>
-              `).join("") || `<tr><td colspan="6">No recruitment posts found.</td></tr>`}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `;
-
-    const pendingCount = state.registrations.filter(p => p.status === "pending").length;
-
-    return `
-      ${pendingCount ? `
-        <div class="admin-highlight">
-          <div class="section-kicker">REGISTRATION REVIEW QUEUE</div>
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px">
-            <div><b style="font-size:17px">${pendingCount} Pending Application${pendingCount === 1 ? "" : "s"}</b><div style="font-size:10px;color:#7890a7;margin-top:4px">Approve or reject Team Leader / IGL and Sub-Leader requests.</div></div>
-            <span class="status-pill"><span class="tiny-dot"></span>PENDING</span>
-          </div>
-        </div>` : `
-        <div class="admin-highlight">
-          <div class="section-kicker">REGISTRATION REVIEW QUEUE</div>
-          <div style="margin-top:8px;color:#7990a7;font-size:11px">No pending registration applications.</div>
-        </div>`}
-
-      <div class="card">
-        <div class="section-title"><h3>Member Registrations</h3><span>${state.registrations.length} ACCOUNTS</span></div>
-        <div class="table-shell">
-          <table>
-            <thead><tr><th>Member</th><th>Team</th><th>Role</th><th>Contact</th><th>Status</th><th>Control</th></tr></thead>
-            <tbody>
-              ${state.registrations.map(p => `
-                <tr>
-                  <td><strong>${esc(p.display_name)}</strong></td>
-                  <td>${esc(p.team_name || "—")}</td>
-                  <td>${esc(formatRole(p.role))}</td>
-                  <td>${esc(p.phone || "—")}</td>
-                  <td><span class="badge2 ${p.status==="approved"?"green":p.status==="banned"?"red":"blue"}">${esc(p.status)}</span></td>
-                  <td>
-                    <div class="card-actions" style="margin:0">
-                      ${p.status === "pending"
-                        ? `<button class="btn btn-green btn-small" data-profile-status="${esc(p.id)}" data-next="approved">APPROVE</button>
-                           <button class="btn btn-danger btn-small" data-profile-status="${esc(p.id)}" data-next="rejected">REJECT</button>`
-                        : `<button class="btn btn-dark btn-small" data-profile-status="${esc(p.id)}" data-next="${p.status==="banned"?"approved":"banned"}">${p.status==="banned"?"UNBAN":"BAN"}</button>`}
-                    </div>
-                  </td>
-                </tr>
-              `).join("") || `<tr><td colspan="6">No registrations found.</td></tr>`}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `;
-  }
-
-  function bindAdmin() {
-    document.querySelectorAll("[data-admin-tab]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        state.adminTab = btn.dataset.adminTab;
-        loadPage().then(() => bindAdmin());
-      });
-    });
-
-    document.querySelectorAll("[data-profile-status]").forEach(btn => {
-      btn.addEventListener("click", () => updateProfileStatus(btn.dataset.profileStatus, btn.dataset.next));
-    });
-
-    document.querySelectorAll("[data-team-status]").forEach(btn => {
-      btn.addEventListener("click", () => updateTeamStatus(btn.dataset.teamStatus, btn.dataset.next));
-    });
-
-    document.querySelectorAll("[data-challenge-status]").forEach(btn => {
-      btn.addEventListener("click", () => updatePostStatus("practice_challenges", btn.dataset.challengeStatus, btn.dataset.next));
-    });
-
-    document.querySelectorAll("[data-recruit-status]").forEach(btn => {
-      btn.addEventListener("click", () => updatePostStatus("recruitment_posts", btn.dataset.recruitStatus, btn.dataset.next));
-    });
-  }
-
-  async function updateProfileStatus(id, status) {
-    try {
-      const { error: profileError } = await sb
-        .from("profiles")
-        .update({ status })
-        .eq("id", id);
-
-      if (profileError) throw profileError;
-
-      let memberStatus = null;
-      if (status === "approved") memberStatus = "approved";
-      if (status === "rejected") memberStatus = "rejected";
-      if (status === "banned") memberStatus = "banned";
-
-      if (memberStatus) {
-        const { error: memberError } = await sb
-          .from("team_members")
-          .update({ status: memberStatus })
-          .eq("user_id", id);
-
-        if (memberError) throw memberError;
-      }
-
-      showToast(`Member status changed to ${status}.`);
-      await loadPage();
-      bindAdmin();
-    } catch (error) {
-      console.error(error);
-      showToast(error.message || "Could not update member.", "error");
-    }
-  }
-
-  async function updateTeamStatus(id, status) {
-    try {
-      const { error } = await sb.from("teams").update({ status }).eq("id", id);
-      if (error) throw error;
-      showToast(`Team status changed to ${status}.`);
-      await loadPage();
-      bindAdmin();
-    } catch (error) {
-      console.error(error);
-      showToast(error.message || "Could not update team.", "error");
-    }
-  }
-
-  async function updatePostStatus(table, id, status) {
-    try {
-      const { error } = await sb.from(table).update({ status }).eq("id", id);
-      if (error) throw error;
-      showToast(`Post status changed to ${status}.`);
-      await loadPage();
-      bindAdmin();
-    } catch (error) {
-      console.error(error);
-      showToast(error.message || "Could not update post.", "error");
-    }
-  }
-
-  /* ---------------- Shared bindings ---------------- */
-
-  function bindCommonCards() {
-    document.querySelectorAll("[data-go]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        state.page = btn.dataset.go;
-        renderApp();
-      });
-    });
-
-    document.querySelectorAll("[data-wa]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const phone = cleanPhone(btn.dataset.wa);
-        if (!phone) return showToast("No contact number is available.", "error");
-        window.open(`https://wa.me/${phone.replace("+","")}`, "_blank", "noopener");
-      });
-    });
-
-    document.querySelectorAll("[data-details]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const data = JSON.parse(btn.dataset.details);
-        const html = Object.entries(data)
-          .filter(([k,v]) => !["id","team_id","team_logo_url","created_by"].includes(k) && v !== null && v !== "")
-          .map(([k,v]) => `
-            <div class="info" style="margin-bottom:8px">
-              <small>${esc(k.replaceAll("_"," "))}</small>
-              <b>${esc(Array.isArray(v) ? v.join(" • ") : String(v))}</b>
-            </div>
-          `).join("");
-        openModal("Post Details", html || `<div class="muted">No additional details.</div>`);
-      });
-    });
-  }
-
-  async function notifyWhatsApp(payload) {
-    try {
-      const { error } = await sb.functions.invoke(WHATSAPP_FUNCTION, { body: payload });
-      if (error) {
-        console.warn("WhatsApp notification failed:", error);
-        showToast("Post saved. WhatsApp automation is not connected yet.", "error");
-      }
-    } catch (error) {
-      console.warn(error);
-      showToast("Post saved. WhatsApp automation is not connected yet.", "error");
-    }
-  }
-
-  /* ---------------- Startup ---------------- */
-
-  (async () => {
-    try {
-      ensureClient();
-      await hydrateSession();
-    } catch (error) {
-      console.error(error);
-      renderAuth();
-      showToast(error.message || "Supabase connection failed.", "error");
-    }
-  })();
-
-})();
+(async()=>{try{await hydrateMemberSession();}catch(e){console.log('Public state:',e.message);openView('public');$('nav-register').classList.remove('hidden');$('nav-logout').classList.add('hidden');}})();
