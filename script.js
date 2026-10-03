@@ -191,10 +191,16 @@
         await supabase.auth.signOut();
         state.screen = "login";
         render();
-        showToast(
-          currentStatus === "banned" ? "Your account is banned." : "Your registration is pending administrator approval.",
-          "error"
-        );
+
+        const statusMessage = currentStatus === "rejected"
+          ? "Your registration was rejected by the administrator. You can submit registration again with the same email and password."
+          : currentStatus === "banned"
+            ? "Your account is banned."
+            : currentStatus === "approved"
+              ? "Your account is approved."
+              : "Your registration is pending administrator approval.";
+
+        showToast(statusMessage, "error");
         return;
       }
 
@@ -202,10 +208,24 @@
       state.team = state.membership?.teams || null;
 
       if (!state.isAdmin && (!state.membership || state.membership.status !== "approved" || state.team?.status !== "active")) {
+        const membershipStatus = state.membership?.status;
+        const teamStatus = state.team?.status;
+
         await supabase.auth.signOut();
         state.screen = "login";
         render();
-        showToast("Your team is not confirmed yet. Please wait for admin approval.", "error");
+
+        const message = membershipStatus === "rejected"
+          ? "Your registration was rejected by the administrator. You can submit registration again with the same email and password."
+          : teamStatus === "banned"
+            ? "Your team is banned."
+            : teamStatus === "removed"
+              ? "Your team has been removed by the administrator."
+              : membershipStatus === "banned"
+                ? "Your membership is banned."
+                : "Your team is not confirmed yet. Please wait for admin approval.";
+
+        showToast(message, "error");
         return;
       }
 
@@ -264,7 +284,7 @@
               <div class="feature"><b>PERMANENT RANKING</b><span>Approved WIN +3 and LOSS −3 records never reset.</span></div>
               <div class="feature"><b>2 MEMBERS / TEAM</b><span>One Team Leader/IGL + one Sub-Leader only.</span></div>
             </div>
-            <div class="access-note"><b>APPROVAL FLOW:</b> Registration → Pending → Admin Review → Approved → Login.</div>
+            <div class="access-note"><b>APPROVAL FLOW:</b> Registration → Pending → Admin Review → Approved → Login. Rejected registrations can be submitted again using the same account.</div>
           </section>
 
           <section class="card auth-card">
@@ -320,7 +340,7 @@
           <label class="full">TEAM LOGO — OPTIONAL<input id="regLogo" type="file" accept="image/png,image/jpeg,image/webp"></label>
         </div>
         <div class="hint">Logo can be uploaded later from TEAM PROFILE after approval. PNG/JPG/WEBP • Maximum ${MAX_IMAGE_MB} MB.</div>
-        <div class="access-note" style="margin-top:13px"><b>IMPORTANT:</b> Email confirmation may be required by Supabase. Your registration record is created server-side even when no session is returned.</div>
+        <div class="access-note" style="margin-top:13px"><b>IMPORTANT:</b> New registrations are reviewed by an administrator. A rejected registration can be submitted again with the same email/password; you do not need to create a second account.</div>
         <div class="auth-actions">
           <button class="btn btn-primary" type="submit">SUBMIT REGISTRATION</button>
           <button class="btn btn-secondary" id="registerBackBtn" type="button">BACK TO LOGIN</button>
@@ -388,17 +408,22 @@
     try {
       if (!teamName || !name || !email || !phone) throw new Error("Complete all required fields.");
       if (!/^\+92\d{10}$/.test(phone)) throw new Error("Enter a valid Pakistan mobile number.");
-      if (!['leader', 'sub_leader'].includes(role)) throw new Error("Invalid website member role.");
+      if (!["leader", "sub_leader"].includes(role)) throw new Error("Invalid website member role.");
       if (password.length < 8) throw new Error("Password must be at least 8 characters.");
       if (password !== password2) throw new Error("Passwords do not match.");
       if (file && (file.size > MAX_IMAGE_MB * 1024 * 1024 || !/^image\/(png|jpeg|webp)$/.test(file.type))) {
         throw new Error(`Logo must be PNG/JPG/WEBP and ${MAX_IMAGE_MB} MB or smaller.`);
       }
 
-      // Do NOT upload the logo during signup. When email confirmation is enabled,
-      // Supabase can return a user with no active session, so the browser cannot
-      // safely upload to an authenticated storage path yet. Upload it later from Team Profile.
-      const { data, error } = await supabase.auth.signUp({
+      /*
+        FIRST ATTEMPT: create a brand-new Auth account.
+        Existing rejected users cannot create a second Auth account with the same email.
+        In that case we fall through to the re-application flow below.
+      */
+      let signUpData = null;
+      let existingAccount = false;
+
+      const signUpResult = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -411,14 +436,82 @@
         }
       });
 
-      if (error) throw error;
-      if (!data?.user) throw new Error("Registration could not be created.");
-      if (data.session) await supabase.auth.signOut();
+      if (signUpResult.error) {
+        const msg = String(signUpResult.error.message || "");
+        if (/already registered|already exists|user already|email.*taken|duplicate/i.test(msg)) {
+          existingAccount = true;
+        } else {
+          throw signUpResult.error;
+        }
+      } else {
+        signUpData = signUpResult.data;
+        /* Supabase may intentionally return an obfuscated existing user. */
+        if (signUpData?.user && Array.isArray(signUpData.user.identities) && signUpData.user.identities.length === 0) {
+          existingAccount = true;
+        }
+      }
 
-      goLogin();
-      showToast("Registration submitted. Status: PENDING for administrator approval.");
+      if (!existingAccount) {
+        if (!signUpData?.user) throw new Error("Registration could not be created.");
+        if (signUpData.session) await supabase.auth.signOut();
+
+        goLogin();
+        showToast("Registration submitted. Status: PENDING for administrator approval.");
+        return;
+      }
+
+      /*
+        EXISTING ACCOUNT FLOW:
+        The same email already exists, so authenticate with the supplied password.
+        Only a previously REJECTED registration is allowed to be submitted again.
+      */
+      await supabase.auth.signOut();
+
+      const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+      if (loginError) {
+        throw new Error("This email is already registered. Use the current password for this account, or contact the administrator.");
+      }
+
+      const existingProfile = await getProfile(loginData.user.id);
+      if (!existingProfile) {
+        await supabase.auth.signOut();
+        throw new Error("This account exists but its ESPORTS registration record is missing. Contact the administrator.");
+      }
+
+      if (existingProfile.status === "rejected") {
+        const { error: reapplyError } = await supabase.rpc("resubmit_rejected_registration", {
+          p_team_name: teamName,
+          p_display_name: name,
+          p_phone: phone,
+          p_role: role
+        });
+        if (reapplyError) throw reapplyError;
+
+        await supabase.auth.signOut();
+        goLogin();
+        showToast("Registration submitted again successfully. Status: PENDING for administrator approval.");
+        return;
+      }
+
+      await supabase.auth.signOut();
+
+      if (existingProfile.status === "pending") {
+        throw new Error("This account is already pending administrator approval. You cannot submit another registration for it.");
+      }
+      if (existingProfile.status === "approved") {
+        throw new Error("This account is already approved. Please use LOGIN instead of registering again.");
+      }
+      if (existingProfile.status === "banned") {
+        throw new Error("This account is banned and cannot be registered again.");
+      }
+
+      throw new Error("This email is already registered.");
     } catch (error) {
       console.error(error);
+      try { await supabase.auth.signOut(); } catch (_) {}
       showToast(friendlyError(error, "Registration failed."), "error");
     }
   }
