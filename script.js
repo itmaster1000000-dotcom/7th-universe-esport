@@ -122,7 +122,7 @@
     const code = String(error?.code || "");
 
     if (code === "42501" || /permission denied|not permitted|administrator access required/i.test(message)) {
-      return "Database denied this action. Run the latest ADMIN SQL Part 2 and make sure your admin profile is role=admin and status=approved.";
+      return "Database denied this action. Run the latest ESPORTS SQL Parts 1–12 and make sure your admin profile is role=admin and status=approved.";
     }
     if (code === "23505" || /duplicate key|already exists/i.test(message)) {
       return "This value already exists. Check the team name, email, or selected role.";
@@ -537,7 +537,7 @@
         renderMember();
       });
     });
-    document.getElementById("logoutBtn")?.addEventListener("click", () => supabase.auth.signOut());
+    document.getElementById("logoutBtn")?.addEventListener("click", handleLogout);
     loadMemberSection();
   }
 
@@ -980,7 +980,7 @@
     const pending = state.registrations.filter((row) => row.status === "pending").length;
     const resultPending = state.results.filter((row) => row.status === "pending").length;
 
-    return `<div class="container"><div style="margin-bottom:16px"><div class="kicker">RESTRICTED CONTROL</div><h1 class="title">ADMIN CONTROL CENTER</h1><div class="desc">Approval, member management, team editing, ban/unban, soft-remove/restore, result verification and post moderation.</div></div><div class="quick-grid"><div class="quick"><div class="qicon">${pending}</div><b>PENDING MEMBERS</b><span>Registration queue.</span></div><div class="quick"><div class="qicon">${resultPending}</div><b>PENDING RESULTS</b><span>Verification queue.</span></div><div class="quick"><div class="qicon">${state.teams.length}</div><b>TEAMS</b><span>Full team directory.</span></div><div class="quick"><div class="qicon">${state.results.filter((row) => row.status === "approved").length}</div><b>VERIFIED RESULTS</b><span>Permanent records.</span></div></div><div class="admin-grid" style="margin-top:16px"><aside class="admin-tabs"><button class="admin-tab ${state.adminSection === "registrations" ? "active" : ""}" data-admin="registrations">REGISTRATIONS <span class="admin-count">${pending}</span></button><button class="admin-tab ${state.adminSection === "members" ? "active" : ""}" data-admin="members">MEMBERS</button><button class="admin-tab ${state.adminSection === "teams" ? "active" : ""}" data-admin="teams">TEAMS</button><button class="admin-tab ${state.adminSection === "results" ? "active" : ""}" data-admin="results">RESULTS <span class="admin-count">${resultPending}</span></button><button class="admin-tab ${state.adminSection === "practice" ? "active" : ""}" data-admin="practice">PRACTICE</button><button class="admin-tab ${state.adminSection === "recruitment" ? "active" : ""}" data-admin="recruitment">RECRUITMENT</button></aside><section>${adminContent()}</section></div></div>`;
+    return `<div class="container"><div style="margin-bottom:16px"><div class="kicker">RESTRICTED CONTROL</div><div class="admin-toolbar"><div><h1 class="title" style="margin-bottom:6px">ADMIN CONTROL CENTER</h1><div class="desc">Approval, member management, team editing, ban/unban, soft-remove/restore, result verification and post moderation.</div></div><div class="toolbar-actions"><button class="btn btn-dark btn-small" id="adminDashboardBtn" type="button">DASHBOARD</button><button class="btn btn-logout btn-small" id="adminLogoutBtn" type="button">LOGOUT</button></div></div></div><div class="quick-grid"><div class="quick"><div class="qicon">${pending}</div><b>PENDING MEMBERS</b><span>Registration queue.</span></div><div class="quick"><div class="qicon">${resultPending}</div><b>PENDING RESULTS</b><span>Verification queue.</span></div><div class="quick"><div class="qicon">${state.teams.length}</div><b>TEAMS</b><span>Full team directory.</span></div><div class="quick"><div class="qicon">${state.results.filter((row) => row.status === "approved").length}</div><b>VERIFIED RESULTS</b><span>Permanent records.</span></div></div><div class="admin-grid" style="margin-top:16px"><aside class="admin-tabs"><button class="admin-tab ${state.adminSection === "registrations" ? "active" : ""}" data-admin="registrations">REGISTRATIONS <span class="admin-count">${pending}</span></button><button class="admin-tab ${state.adminSection === "members" ? "active" : ""}" data-admin="members">MEMBERS</button><button class="admin-tab ${state.adminSection === "teams" ? "active" : ""}" data-admin="teams">TEAMS</button><button class="admin-tab ${state.adminSection === "results" ? "active" : ""}" data-admin="results">RESULTS <span class="admin-count">${resultPending}</span></button><button class="admin-tab ${state.adminSection === "practice" ? "active" : ""}" data-admin="practice">PRACTICE</button><button class="admin-tab ${state.adminSection === "recruitment" ? "active" : ""}" data-admin="recruitment">RECRUITMENT</button></aside><section>${adminContent()}</section></div></div>`;
   }
 
   function adminContent() {
@@ -1022,7 +1022,32 @@
     return `<div class="panel"><div class="panel-head"><div><div class="kicker">DIRECTORY</div><h3>RECRUITMENT POSTS</h3></div></div><div class="table-shell"><table><thead><tr><th>Listing</th><th>Type</th><th>Roles</th><th>Availability</th><th>Status</th><th>Control</th></tr></thead><tbody>${state.recruitment.map((post) => `<tr><td>${esc(post.team_name || post.player_ign || "—")}</td><td>${esc(post.listing_type)}</td><td>${esc(Array.isArray(post.looking_for) ? post.looking_for.join(", ") : post.looking_for || "—")}</td><td>${esc(post.availability || "—")}</td><td>${esc(post.status)}</td><td><button class="btn btn-dark btn-small" data-post="recruitment" data-id="${esc(post.id)}" data-next="${post.status === "open" ? "closed" : "open"}">${post.status === "open" ? "CLOSE" : "REOPEN"}</button></td></tr>`).join("") || `<tr><td colspan="6">No recruitment.</td></tr>`}</tbody></table></div></div>`;
   }
 
+  async function handleLogout() {
+    closeModal();
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error(error);
+      showToast(friendlyError(error, "Logout failed."), "error");
+      return;
+    }
+    state.user = null;
+    state.profile = null;
+    state.membership = null;
+    state.team = null;
+    state.isAdmin = false;
+    state.screen = "login";
+    state.section = "dashboard";
+    state.adminSection = "registrations";
+    render();
+    showToast("Logged out successfully.");
+  }
+
   function bindAdmin() {
+    document.getElementById("adminLogoutBtn")?.addEventListener("click", handleLogout);
+    document.getElementById("adminDashboardBtn")?.addEventListener("click", () => {
+      state.section = "dashboard";
+      renderMember();
+    });
     document.querySelectorAll("[data-admin]").forEach((button) => button.addEventListener("click", () => {
       state.adminSection = button.dataset.admin;
       renderMember();
