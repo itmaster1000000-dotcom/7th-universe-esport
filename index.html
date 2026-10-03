@@ -1,213 +1,438 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#02070d" />
-  <meta name="color-scheme" content="dark" />
-  <meta name="description" content="7TH UNIVERSE ESPORTS — Free Fire esports practice, recruitment and team community platform." />
-  <link rel="icon" type="image/png" href="./7th-universe-esports-logo.png" />
-  <link rel="apple-touch-icon" href="./7th-universe-esports-logo.png" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#06101d">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="7TH UNIVERSE ESPORTS — Free Fire competitive practice and recruitment platform.">
+  <link rel="icon" type="image/png" href="./7th-universe-esports-logo.png">
+  <link rel="apple-touch-icon" href="./7th-universe-esports-logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/png" href="./7th-universe-esports-logo.png">
+  <link rel="apple-touch-icon" href="./7th-universe-esports-logo.png">
   <title>7TH UNIVERSE • ESPORTS | FREE FIRE</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
   <style>
     :root{
-      --bg:#02070d;--bg2:#06111d;--panel:rgba(7,18,30,.95);--panel2:rgba(9,24,39,.98);
-      --line:rgba(69,157,229,.16);--line2:rgba(94,185,255,.30);--text:#e9f4ff;--muted:#89a3bc;
-      --muted2:#54708a;--blue:#157bff;--blue2:#51b2ff;--cyan:#22d4f2;
-      --red:#ef3a52;--red2:#ff7587;--green:#27d491;--danger:#ff3858;
-      --shadow:0 30px 90px rgba(0,0,0,.52);--shadow2:0 16px 46px rgba(0,0,0,.32);
-      --r:18px;--r2:24px;--max:1260px;
+      --bg:#02060b;
+      --bg2:#06101d;
+      --panel:#071321;
+      --panel2:#0a1828;
+      --panel3:#0e2034;
+      --line:rgba(85,170,255,.15);
+      --line2:rgba(100,190,255,.28);
+      --text:#eef7ff;
+      --muted:#8ba5bd;
+      --muted2:#587189;
+      --blue:#0e6cff;
+      --blue2:#42a9ff;
+      --cyan:#2de0ff;
+      --good:#24d68a;
+      --warn:#ffd56a;
+      --danger:#ff617d;
+      --shadow:0 30px 90px rgba(0,0,0,.55);
+      --shadow2:0 16px 46px rgba(0,0,0,.28);
+      --radius:18px;
+      --radius2:24px;
+      --max:1260px;
     }
-    *{box-sizing:border-box}html{scroll-behavior:smooth}
-    body{margin:0;min-height:100vh;color:var(--text);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:
-      radial-gradient(circle at 8% 0%,rgba(21,123,255,.10),transparent 29%),
-      radial-gradient(circle at 92% 0%,rgba(34,212,242,.08),transparent 25%),
-      radial-gradient(circle at 54% 96%,rgba(21,123,255,.06),transparent 32%),
-      linear-gradient(180deg,#02060b 0%,#07131f 54%,#02060b 100%);overflow-x:hidden}
-    body:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;opacity:.15;background-image:linear-gradient(rgba(255,255,255,.024) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.024) 1px,transparent 1px);background-size:32px 32px}
-    button,input,select,textarea{font:inherit}button,a{-webkit-tap-highlight-color:transparent}button{cursor:pointer}img{display:block;max-width:100%}a{color:inherit;text-decoration:none}.hidden{display:none!important}
-    .topline{height:3px;background:linear-gradient(90deg,var(--blue),var(--cyan),#fff,var(--blue2));box-shadow:0 0 30px rgba(21,123,255,.26)}
-    header{position:sticky;top:0;z-index:100;backdrop-filter:blur(18px);background:rgba(2,8,14,.88);border-bottom:1px solid var(--line)}
-    .nav{width:min(calc(100% - 20px),var(--max));margin:auto;min-height:78px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px}
-    .nav-left,.nav-right{display:flex;align-items:center;gap:8px}.nav-right{justify-content:flex-end}.nav-center{display:flex;align-items:center;justify-content:center;gap:11px}
-    .brand-mark{width:52px;height:52px;flex:0 0 auto;border:1px solid rgba(81,178,255,.34);border-radius:15px;background:linear-gradient(145deg,#0a1b2d,#030a12);box-shadow:0 0 30px rgba(21,123,255,.14);display:grid;place-items:center}
-    .brand-mark img{width:100%;height:100%;object-fit:cover;border-radius:inherit}.brand-title{font-family:"Barlow Condensed",sans-serif;font-size:28px;line-height:.88;font-weight:900;letter-spacing:.10em;white-space:nowrap}.brand-sub{margin-top:4px;color:var(--muted);font-size:8px;font-weight:800;letter-spacing:.20em;text-transform:uppercase;white-space:nowrap}
-    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;padding:10px 14px;border:1px solid rgba(255,255,255,.09);border-radius:12px;color:#fff;background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.025));font-size:11px;font-weight:900;transition:.16s ease;letter-spacing:.04em}.btn:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.18)}.btn:disabled{opacity:.56;cursor:not-allowed;transform:none}.btn-primary{border-color:rgba(81,178,255,.50);background:linear-gradient(135deg,#106af4,#35a9ff);box-shadow:0 14px 32px rgba(21,123,255,.18)}.btn-blue{border-color:rgba(81,178,255,.30);background:rgba(21,123,255,.09);color:#a7dbff}.btn-red{border-color:rgba(239,58,82,.34);background:rgba(239,58,82,.08);color:#ffb0ba}.btn-green{border-color:rgba(39,212,145,.28);background:rgba(39,212,145,.07);color:#99f1c9}.btn-ghost{background:transparent}.btn-small{min-height:34px;padding:7px 10px;font-size:9px;border-radius:10px}
-    .page{min-height:calc(100vh - 81px)}.container{width:min(calc(100% - 20px),var(--max));margin:auto}.section{padding:22px 0 42px}.kicker{color:#69baff;font-size:9px;font-weight:900;letter-spacing:.19em;text-transform:uppercase}.title{margin:5px 0 0;font-family:"Barlow Condensed",sans-serif;font-size:42px;line-height:.92;font-weight:900;letter-spacing:.04em;text-transform:uppercase}.desc{max-width:700px;color:var(--muted);font-size:10px;line-height:1.7}.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:15px;margin-bottom:15px}.card,.admin-panel{position:relative;overflow:hidden;padding:17px;border:1px solid var(--line);border-radius:var(--r2);background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.016));box-shadow:var(--shadow2)}.card:before,.admin-panel:before{content:"";position:absolute;top:0;left:0;width:150px;height:2px;background:linear-gradient(90deg,var(--blue),var(--cyan),transparent)}.panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:13px}.panel-head h3{margin:0;font-family:"Barlow Condensed",sans-serif;font-size:28px;line-height:1;text-transform:uppercase;letter-spacing:.04em}.subtle{margin-top:4px;color:var(--muted);font-size:9px;line-height:1.6}
-    .badge{display:inline-flex;align-items:center;justify-content:center;min-height:26px;padding:5px 9px;border:1px solid rgba(255,255,255,.08);border-radius:999px;font-size:8px;font-weight:900;letter-spacing:.11em;text-transform:uppercase;white-space:nowrap}.badge-blue{color:#a8dcff;background:rgba(21,123,255,.08);border-color:rgba(81,178,255,.25)}.badge-green{color:#a0f4cb;background:rgba(39,212,145,.06);border-color:rgba(39,212,145,.24)}.badge-red{color:#ffb1bc;background:rgba(239,58,82,.07);border-color:rgba(239,58,82,.24)}.badge-gray{color:#b8c6d2;background:rgba(255,255,255,.035)}
-    label{display:grid;gap:7px;color:#c0d1e0;font-size:9px;font-weight:900;letter-spacing:.05em}.field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}.field-grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px}.full{grid-column:1/-1}input,select,textarea{width:100%;min-height:44px;padding:11px 12px;border:1px solid rgba(111,180,231,.12);border-radius:11px;outline:none;color:#edf6ff;background:rgba(2,8,14,.76)}input:focus,select:focus,textarea:focus{border-color:rgba(81,178,255,.55);box-shadow:0 0 0 3px rgba(21,123,255,.08)}input::placeholder,textarea::placeholder{color:#536f87}input[type=file]{padding:9px}textarea{resize:vertical;min-height:90px}.hint{margin-top:7px;color:var(--muted2);font-size:9px;line-height:1.6}.status{display:none;margin-top:11px;padding:10px 11px;border:1px solid rgba(255,255,255,.08);border-radius:11px;font-size:10px;line-height:1.55}.status.show{display:block}.status.ok{color:#a9f1cc;background:rgba(39,212,145,.05);border-color:rgba(39,212,145,.20)}.status.error{color:#ffc0c8;background:rgba(239,58,82,.07);border-color:rgba(239,58,82,.21)}.status.info{color:#a8dbff;background:rgba(21,123,255,.06);border-color:rgba(81,178,255,.21)}
 
-    /* Auth / landing — deliberately follows GVG's visual hierarchy */
-    #public-landing{display:grid;place-items:center;min-height:calc(100vh - 81px);padding:24px 0 46px}.landing-wrap{width:min(760px,100%);display:grid;gap:15px}.login-card{padding:24px 20px}.login-brand{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:17px}.login-brand .brand-mark{width:66px;height:66px;border-radius:19px;border-color:rgba(81,178,255,.34);box-shadow:0 0 34px rgba(21,123,255,.18)}.login-brand strong{font-family:"Barlow Condensed",sans-serif;font-size:32px;letter-spacing:.07em}.login-brand span{display:block;margin-top:4px;color:var(--muted);font-size:8px;font-weight:800;letter-spacing:.18em}.login-head{text-align:center}.login-head .title{font-size:45px}.login-head p{margin:7px auto 0;color:var(--muted);font-size:10px;line-height:1.7}.center-actions{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:14px}.center-actions .btn{min-width:175px}.preview-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.preview{padding:16px}.preview-icon{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,rgba(21,123,255,.18),rgba(34,212,242,.07));border:1px solid rgba(81,178,255,.20);font-family:"Barlow Condensed",sans-serif;font-size:20px;font-weight:900}.preview h3{margin:10px 0 4px;font-size:14px}.preview p{margin:0;color:#6f899f;font-size:9px;line-height:1.55}.secure-strip{padding:12px 13px;border:1px solid rgba(34,212,242,.22);border-radius:12px;background:rgba(34,212,242,.035);color:#aeeaf5;font-size:9px;line-height:1.55}
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{
+      margin:0;min-height:100vh;color:var(--text);
+      font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
+      background:
+        radial-gradient(circle at 10% 0%,rgba(14,108,255,.12),transparent 26%),
+        radial-gradient(circle at 92% 4%,rgba(45,224,255,.08),transparent 24%),
+        radial-gradient(circle at 55% 100%,rgba(14,108,255,.06),transparent 28%),
+        linear-gradient(180deg,#02060b 0%,#06111e 55%,#03080f 100%);
+      overflow-x:hidden;
+    }
+    body:before{
+      content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;opacity:.16;
+      background-image:
+        linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);
+      background-size:34px 34px;
+    }
 
-    /* Member area */
-    #member-dashboard{display:none}.member-access-gate{padding:34px 20px;text-align:center;border:1px solid rgba(81,178,255,.18);border-radius:20px;background:linear-gradient(135deg,rgba(21,123,255,.045),rgba(255,255,255,.015));margin-bottom:15px}.access-gate-icon{font-size:32px}.member-tabs{display:flex;gap:7px;align-items:center;overflow-x:auto;flex-wrap:nowrap;padding:8px;margin:2px 0 14px;border:1px solid var(--line);border-radius:15px;background:rgba(255,255,255,.018);scrollbar-width:none}.member-tabs::-webkit-scrollbar{display:none}.member-tab{flex:1 0 auto;min-width:134px;border:1px solid rgba(255,255,255,.07);border-radius:11px;padding:11px 13px;color:#8298ac;background:rgba(255,255,255,.025);font-size:9px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}.member-tab.active{color:#fff;border-color:rgba(81,178,255,.38);background:linear-gradient(135deg,rgba(21,123,255,.15),rgba(34,212,242,.045));box-shadow:0 8px 20px rgba(0,0,0,.16)}.member-view{display:none}.member-view.active{display:block}.member-grid{display:grid;grid-template-columns:1.02fr 1fr .96fr;gap:14px;align-items:start}.sticky-card{position:sticky;top:96px}.rules-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.rule-item{display:grid;grid-template-columns:36px 1fr;gap:9px;align-items:center;padding:11px;border:1px solid rgba(81,178,255,.10);border-radius:13px;background:linear-gradient(135deg,rgba(21,123,255,.035),rgba(255,255,255,.012))}.rule-no{display:grid;place-items:center;width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,rgba(21,123,255,.20),rgba(34,212,242,.08));color:#d7edff;font-family:"Barlow Condensed",sans-serif;font-size:18px;font-weight:900}.rule-text{font-size:10px;font-weight:800;line-height:1.4}.rule-text b{color:#76c4ff}.dashboard-note{display:flex;gap:10px;flex-wrap:wrap;margin-top:11px;padding:11px 12px;border:1px solid rgba(81,178,255,.10);border-radius:12px;background:rgba(255,255,255,.018);color:#7790a7;font-size:9px;line-height:1.55}.dashboard-note b{color:#a7d9ff}
-    .challenge-list,.result-list,.rank-list{display:grid;gap:10px}.challenge-card,.result-slot{padding:14px;border:1px solid var(--line);border-radius:15px;background:rgba(255,255,255,.025)}.challenge-card .name,.match-line{font-family:"Barlow Condensed",sans-serif;font-size:23px;line-height:.98;font-weight:900;letter-spacing:.02em;text-transform:uppercase;word-break:break-word}.meta-row{display:flex;align-items:flex-start;justify-content:space-between;gap:9px}.challenge-time{margin-top:9px;font-size:15px;font-weight:900}.pill-wrap{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.pill{display:inline-flex;align-items:center;min-height:24px;padding:5px 8px;border:1px solid rgba(255,255,255,.07);border-radius:999px;color:#b8d2e9;background:rgba(255,255,255,.03);font-size:8px;font-weight:700}.contact-line{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px}.contact-link{display:inline-flex;align-items:center;gap:7px;min-height:34px;padding:7px 9px;border-radius:9px;border:1px solid rgba(81,178,255,.20);background:rgba(21,123,255,.05);color:#caeaff;font-size:9px;font-weight:900}.divider{height:1px;background:rgba(81,178,255,.09);margin:17px 0}.empty{padding:34px 14px;text-align:center;border:1px dashed rgba(81,178,255,.16);border-radius:15px;color:#607b93;font-size:10px}.search-bar{position:relative}.search-bar input{padding-right:36px}.search-icon{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#6794b6}.rank-table,.admin-table{width:100%;border-collapse:collapse}.rank-table th,.rank-table td,.admin-table th,.admin-table td{padding:10px 9px;border-bottom:1px solid rgba(255,255,255,.05);font-size:10px;text-align:left}.rank-table th,.admin-table th{color:#718ca5;font-size:8px;letter-spacing:.12em;text-transform:uppercase}.rank-table tr:last-child td,.admin-table tr:last-child td{border-bottom:0}.rank-number{font-family:"Barlow Condensed",sans-serif;font-size:18px;font-weight:900}.rank-points{font-family:"Barlow Condensed",sans-serif;font-size:19px;font-weight:900;color:#8fd0ff;text-align:right}.admin-table-shell{overflow:auto}.bottom-box{min-height:160px;display:grid;place-items:center;border:1px solid rgba(239,58,82,.18);border-radius:15px;background:rgba(239,58,82,.035)}
+    button,input,select,textarea{font:inherit}
+    button,a{-webkit-tap-highlight-color:transparent}
+    button{cursor:pointer}
+    img{display:block;max-width:100%}
+    a{text-decoration:none;color:inherit}
+    .hidden{display:none!important}
+    .container{width:min(calc(100% - 20px),var(--max));margin:auto}
+    .topline{
+      height:3px;
+      background:linear-gradient(90deg,var(--blue),var(--cyan),#fff,var(--blue2));
+      box-shadow:0 0 28px rgba(14,108,255,.25)
+    }
 
-    /* Admin */
-    #admin-page{display:none;padding:25px 0 46px}.admin-login{max-width:740px;margin:20px auto}.admin-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:14px}.admin-tabs{display:flex;gap:7px;overflow-x:auto;flex-wrap:nowrap;padding:8px;border:1px solid var(--line);border-radius:15px;background:rgba(255,255,255,.016);margin-bottom:14px}.admin-tab{min-width:118px;border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:10px 12px;color:#8095aa;background:rgba(255,255,255,.02);font-size:9px;font-weight:900;letter-spacing:.08em}.admin-tab.active{color:#fff;border-color:rgba(81,178,255,.32);background:rgba(21,123,255,.10)}.admin-layout{display:grid;grid-template-columns:1fr;gap:14px}.admin-panel-view{display:none}.admin-panel-view.active{display:block}.admin-section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:15px;margin-bottom:12px}.admin-section-head h3{margin:4px 0 0;font-family:"Barlow Condensed",sans-serif;font-size:30px}.admin-section{display:grid;gap:14px}.admin-actions{display:flex;gap:6px;flex-wrap:wrap}.member-cell{display:flex;align-items:center;gap:8px}.mini-logo{width:34px;height:34px;border-radius:10px;object-fit:cover;border:1px solid rgba(81,178,255,.18);background:#040a11}.mini-logo.ph{display:grid;place-items:center;color:#75c2ff;font-weight:900;font-size:9px}.footer{border-top:1px solid var(--line);padding:17px 0;color:#557189;font-size:8px;font-weight:800;letter-spacing:.10em;text-transform:uppercase}.footer-inner{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    /* ---------- Shared ---------- */
+    .btn{
+      display:inline-flex;align-items:center;justify-content:center;gap:8px;
+      min-height:42px;padding:10px 14px;border:1px solid rgba(140,210,255,.13);
+      border-radius:12px;color:#fff;background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.025));
+      font-size:10px;font-weight:1000;letter-spacing:.055em;transition:.16s ease;
+      text-transform:uppercase
+    }
+    .btn:hover{transform:translateY(-1px);border-color:rgba(140,210,255,.28)}
+    .btn:disabled{opacity:.55;cursor:not-allowed;transform:none}
+    .btn-primary{
+      border-color:rgba(62,164,255,.55);
+      background:linear-gradient(135deg,#0754cf,#1597ff);
+      box-shadow:0 12px 28px rgba(14,108,255,.2)
+    }
+    .btn-cyan{
+      border-color:rgba(45,224,255,.34);
+      background:linear-gradient(135deg,#07647c,#14a7ca);
+    }
+    .btn-dark{background:rgba(4,12,21,.82);border-color:var(--line);color:#cfe3f7}
+    .btn-green{background:rgba(10,99,68,.18);border-color:rgba(36,214,138,.32);color:#a6f3d2}
+    .btn-danger{background:rgba(125,25,49,.22);border-color:rgba(255,97,125,.25);color:#ffc0cc}
+    .btn-small{min-height:34px;padding:7px 10px;border-radius:10px;font-size:8px}
+    .btn-block{width:100%}
 
-    /* Modal */
-    .modal-backdrop{position:fixed;inset:0;z-index:200;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.74)}.modal-backdrop.open{display:flex}.modal{width:min(720px,100%);max-height:90vh;overflow:auto;border:1px solid rgba(81,178,255,.22);border-radius:20px;background:#07121e;padding:20px;box-shadow:var(--shadow)}.modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}.close-btn{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:#0a1725;color:#a7bbcd}
+    .card,.panel{
+      position:relative;overflow:hidden;padding:17px;border:1px solid var(--line);
+      border-radius:var(--radius2);
+      background:linear-gradient(180deg,rgba(10,28,46,.92),rgba(4,12,21,.96));
+      box-shadow:var(--shadow2)
+    }
+    .card:before,.panel:before{
+      content:"";position:absolute;top:0;left:0;width:130px;height:2px;
+      background:linear-gradient(90deg,var(--blue),var(--cyan),transparent)
+    }
+    .kicker{
+      color:#74bcff;font-size:8px;font-weight:1000;letter-spacing:.19em;text-transform:uppercase
+    }
+    .title{
+      margin:5px 0 0;font-family:"Barlow Condensed",sans-serif;font-size:40px;line-height:.94;
+      font-weight:900;letter-spacing:.045em;text-transform:uppercase
+    }
+    .desc{max-width:690px;color:var(--muted);font-size:10px;line-height:1.72}
+    .subtle{margin-top:4px;color:var(--muted);font-size:9px;line-height:1.65}
+    .panel-head{
+      display:flex;align-items:flex-start;justify-content:space-between;gap:13px;margin-bottom:13px
+    }
+    .panel-head h3{
+      margin:0;font-family:"Barlow Condensed",sans-serif;font-size:27px;line-height:1;
+      font-weight:900;letter-spacing:.04em;text-transform:uppercase
+    }
+    .badge{
+      display:inline-flex;align-items:center;justify-content:center;min-height:25px;padding:5px 9px;
+      border:1px solid rgba(255,255,255,.08);border-radius:999px;font-size:8px;font-weight:1000;
+      letter-spacing:.11em;text-transform:uppercase;white-space:nowrap
+    }
+    .badge-blue{color:#97d1ff;background:rgba(14,108,255,.08);border-color:rgba(64,168,255,.24)}
+    .badge-cyan{color:#9ef1ff;background:rgba(45,224,255,.06);border-color:rgba(45,224,255,.23)}
+    .badge-green{color:#98efc9;background:rgba(36,214,138,.06);border-color:rgba(36,214,138,.22)}
+    .badge-warn{color:#ffe5a2;background:rgba(255,213,106,.06);border-color:rgba(255,213,106,.22)}
+    .badge-danger{color:#ffc2ce;background:rgba(255,97,125,.06);border-color:rgba(255,97,125,.23)}
 
-    #toast{position:fixed;right:16px;bottom:16px;z-index:220;max-width:380px;display:none;padding:13px 15px;border-radius:13px;background:#071522;border:1px solid #204a69;box-shadow:var(--shadow);font-size:11px;line-height:1.5}#toast.show{display:block}#toast.error{border-color:rgba(239,58,82,.40);color:#ffc0c8}#toast.success{border-color:rgba(39,212,145,.28);color:#b0f3d0}
+    label{
+      display:grid;gap:7px;color:#b9cee1;font-size:9px;font-weight:900;letter-spacing:.055em
+    }
+    .field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
+    .field-grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px}
+    .full{grid-column:1/-1}
+    input,select,textarea{
+      width:100%;min-height:44px;padding:11px 12px;border:1px solid rgba(115,190,255,.12);
+      border-radius:11px;color:#eff8ff;background:rgba(2,8,15,.8);outline:none
+    }
+    input:focus,select:focus,textarea:focus{
+      border-color:rgba(62,164,255,.56);box-shadow:0 0 0 3px rgba(14,108,255,.08)
+    }
+    input::placeholder,textarea::placeholder{color:#526c84}
+    textarea{resize:vertical;min-height:92px}
+    input[type=file]{padding:9px}
+    .hint{margin-top:6px;color:var(--muted2);font-size:8px;line-height:1.6}
+    .status{
+      display:none;margin-top:10px;padding:10px 11px;border:1px solid rgba(115,190,255,.12);
+      border-radius:11px;font-size:9px;line-height:1.6
+    }
+    .status.show{display:block}
+    .status.info{color:#b9dcff;background:rgba(14,108,255,.055);border-color:rgba(64,168,255,.2)}
+    .status.ok{color:#aef3d3;background:rgba(36,214,138,.055);border-color:rgba(36,214,138,.2)}
+    .status.error{color:#ffc4ce;background:rgba(255,97,125,.055);border-color:rgba(255,97,125,.2)}
+    .divider{height:1px;background:rgba(115,190,255,.08);margin:16px 0}
+    .empty{
+      padding:23px 14px;text-align:center;color:#6c849a;border:1px dashed rgba(110,180,240,.14);
+      border-radius:14px;background:rgba(255,255,255,.014);font-size:9px
+    }
 
-    @media(max-width:1040px){.member-grid{grid-template-columns:1fr 1fr}.sticky-card{position:static}.nav{grid-template-columns:auto 1fr auto}.nav-center{justify-content:flex-start}}
-    @media(max-width:780px){.nav{grid-template-columns:auto 1fr auto}.brand-title{font-size:21px}.brand-sub{font-size:6px}.brand-mark{width:44px;height:44px}.nav-left .btn,.nav-right .btn{padding:7px 9px;font-size:8px}.auth-layout{grid-template-columns:1fr}.field-grid-3{grid-template-columns:1fr 1fr}.member-grid{grid-template-columns:1fr}.rules-grid,.preview-grid{grid-template-columns:1fr}.title{font-size:37px}.admin-head{align-items:flex-start;flex-direction:column}}
-    @media(max-width:530px){.nav-left .btn{font-size:0}.nav-left .btn:after{content:"ADMIN";font-size:8px}.nav-right .btn{font-size:0}.nav-right #nav-register:after{content:"REGISTER";font-size:8px}.nav-right #nav-logout:after{content:"LOGOUT";font-size:8px}.login-brand strong{font-size:27px}.login-head .title{font-size:38px}.field-grid,.field-grid-3{grid-template-columns:1fr}.footer-inner{justify-content:center;text-align:center}}
+    /* ---------- Public header / auth ---------- */
+    .public-header{
+      position:sticky;top:0;z-index:50;backdrop-filter:blur(18px);
+      background:rgba(2,7,13,.86);border-bottom:1px solid rgba(85,170,255,.13)
+    }
+    .public-nav{
+      width:min(calc(100% - 20px),var(--max));margin:auto;min-height:78px;
+      display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px
+    }
+    .nav-left,.nav-right{display:flex;align-items:center;gap:8px}
+    .nav-right{justify-content:flex-end}
+    .brand-center{display:flex;align-items:center;justify-content:center;gap:10px}
+    .brand-logo{
+      width:50px;height:50px;border-radius:14px;object-fit:cover;
+      border:1px solid rgba(120,200,255,.2);box-shadow:0 0 28px rgba(14,108,255,.16)
+    }
+    .brand-title{
+      font-family:"Barlow Condensed",sans-serif;font-size:27px;line-height:.9;font-weight:900;
+      letter-spacing:.08em;white-space:nowrap
+    }
+    .brand-title span{color:var(--blue2)}
+    .brand-sub{
+      margin-top:4px;color:#68829a;font-size:7px;font-weight:800;letter-spacing:.2em;text-transform:uppercase
+    }
+    .nav-action{
+      min-height:36px;padding:8px 10px;border:1px solid rgba(115,190,255,.12);border-radius:10px;
+      background:rgba(5,14,24,.72);color:#b8cee2;font-size:8px;font-weight:1000;letter-spacing:.07em
+    }
+    .nav-action:hover{border-color:rgba(64,168,255,.33);color:#fff}
+    .nav-action.register{color:#e9f7ff;border-color:rgba(64,168,255,.34);background:linear-gradient(135deg,rgba(14,108,255,.18),rgba(45,224,255,.07))}
+
+    .public-page{min-height:calc(100vh - 81px);padding:28px 0 50px}
+    .auth-layout{
+      width:min(calc(100% - 20px),1050px);margin:auto;
+      display:grid;grid-template-columns:1.02fr .98fr;gap:15px;align-items:stretch
+    }
+    .auth-hero{
+      padding:30px 28px;min-height:610px;display:flex;flex-direction:column;justify-content:center
+    }
+    .auth-hero h1{
+      margin:13px 0 10px;font-family:"Barlow Condensed",sans-serif;font-size:76px;line-height:.84;
+      letter-spacing:-.015em;text-transform:uppercase
+    }
+    .auth-hero h1 .w{color:#f4f8fd}.auth-hero h1 .b{color:var(--blue2)}.auth-hero h1 .c{color:var(--cyan)}
+    .auth-hero h2{
+      margin:0 0 13px;font-family:"Barlow Condensed",sans-serif;font-size:25px;
+      letter-spacing:.03em;text-transform:uppercase
+    }
+    .feature-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:22px}
+    .feature{
+      padding:12px;border:1px solid rgba(85,170,255,.1);border-radius:14px;background:rgba(7,19,32,.62)
+    }
+    .feature b{display:block;font-family:"Barlow Condensed",sans-serif;font-size:15px;letter-spacing:.04em}
+    .feature span{display:block;margin-top:4px;color:#647f97;font-size:8px;line-height:1.55}
+    .access-note{
+      margin-top:18px;padding:12px 13px;border:1px solid rgba(45,224,255,.18);
+      border-radius:12px;background:rgba(45,224,255,.035);color:#acdff1;font-size:8px;line-height:1.65
+    }
+
+    .auth-card{padding:24px 20px;display:flex;align-items:center}
+    .auth-inner{width:100%;max-width:470px;margin:auto}
+    .auth-logo-row{display:flex;align-items:center;justify-content:center;gap:11px;margin-bottom:16px}
+    .auth-logo-row img{width:61px;height:61px;border-radius:17px;border:1px solid rgba(100,190,255,.2);box-shadow:0 0 25px rgba(14,108,255,.13)}
+    .auth-logo-row strong{display:block;font-family:"Barlow Condensed",sans-serif;font-size:29px;letter-spacing:.06em}
+    .auth-logo-row span{display:block;margin-top:4px;color:#668097;font-size:7px;font-weight:900;letter-spacing:.17em}
+    .auth-tabs{display:flex;gap:7px;justify-content:center;margin:0 0 16px}
+    .auth-tab{
+      min-width:120px;padding:9px 11px;border:1px solid rgba(115,190,255,.09);border-radius:10px;
+      background:rgba(255,255,255,.02);color:#778fa6;font-size:8px;font-weight:1000;letter-spacing:.1em
+    }
+    .auth-tab.active{color:#fff;border-color:rgba(64,168,255,.34);background:linear-gradient(135deg,rgba(14,108,255,.17),rgba(45,224,255,.05))}
+    .auth-title{text-align:center}.auth-title .title{font-size:43px}.auth-title p{margin:7px auto 0;color:var(--muted);font-size:9px;line-height:1.65}
+    .auth-actions{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:13px}
+    .micro{text-align:center;color:#60798f;font-size:8px;line-height:1.6;margin-top:10px}
+    .micro button{border:0;background:transparent;color:#8fcbff;font-weight:900;padding:0}
+
+    /* ---------- Member header / sections ---------- */
+    .app-header{
+      position:sticky;top:0;z-index:60;backdrop-filter:blur(18px);
+      background:rgba(2,7,13,.86);border-bottom:1px solid rgba(85,170,255,.14)
+    }
+    .app-nav{
+      width:min(calc(100% - 20px),var(--max));margin:auto;min-height:79px;
+      display:grid;grid-template-columns:auto 1fr auto;gap:16px;align-items:center
+    }
+    .app-brand{display:flex;align-items:center;gap:9px}
+    .app-brand img{width:43px;height:43px;border-radius:12px;border:1px solid rgba(100,190,255,.18)}
+    .app-brand strong{font-family:"Barlow Condensed",sans-serif;font-size:23px;letter-spacing:.08em}
+    .app-brand span{display:block;margin-top:2px;color:#5f7890;font-size:6px;font-weight:900;letter-spacing:.2em}
+    .app-nav-links{display:flex;align-items:center;justify-content:center;gap:5px;overflow:auto}
+    .app-link{
+      flex:0 0 auto;padding:10px 11px;border:1px solid transparent;border-radius:10px;
+      background:transparent;color:#7992a8;font-size:8px;font-weight:1000;letter-spacing:.06em
+    }
+    .app-link.active,.app-link:hover{color:#fff;background:#071625;border-color:rgba(85,170,255,.14)}
+    .profile-chip{display:flex;align-items:center;gap:8px}
+    .profile-logo{width:35px;height:35px;border-radius:10px;border:1px solid rgba(85,170,255,.2);object-fit:cover;background:#071321}
+    .profile-meta small{display:block;color:#58728b;font-size:6px;text-transform:uppercase;letter-spacing:.09em}
+    .profile-meta strong{display:block;font-size:9px}
+
+    .page{padding:24px 0 55px}
+    .hero{
+      padding:24px;border:1px solid rgba(85,170,255,.22);border-radius:22px;
+      background:
+        radial-gradient(circle at 95% 10%,rgba(14,108,255,.17),transparent 32%),
+        radial-gradient(circle at 5% 90%,rgba(45,224,255,.06),transparent 25%),
+        linear-gradient(135deg,rgba(8,26,45,.96),rgba(3,10,17,.98));
+      box-shadow:var(--shadow)
+    }
+    .hero h2{
+      margin:9px 0 7px;font-family:"Barlow Condensed",sans-serif;font-size:36px;line-height:.95;
+      letter-spacing:.03em;text-transform:uppercase
+    }
+    .hero p{max-width:850px;margin:0;color:#7e97ae;font-size:10px;line-height:1.7}
+    .hero-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+
+    .quick-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}
+    .quick{
+      text-align:left;padding:15px;border:1px solid rgba(85,170,255,.12);border-radius:15px;
+      background:rgba(7,19,32,.84);color:#fff;transition:.16s ease
+    }
+    .quick:hover{transform:translateY(-1px);border-color:rgba(64,168,255,.26)}
+    .qicon{font-size:19px;color:#83ceff;font-family:"Barlow Condensed",sans-serif;font-weight:900}
+    .quick b{display:block;margin-top:8px;font-family:"Barlow Condensed",sans-serif;font-size:17px;letter-spacing:.04em}
+    .quick span{display:block;margin-top:3px;color:#627c94;font-size:8px;line-height:1.5}
+
+    .member-grid{display:grid;grid-template-columns:1.06fr .94fr;gap:13px;margin-top:14px}
+    .stack{display:grid;gap:13px}
+    .feed-list{display:grid;gap:9px}
+    .challenge-card,.recruit-card{
+      padding:13px;border:1px solid rgba(85,170,255,.1);border-radius:14px;background:rgba(255,255,255,.02)
+    }
+    .row-between{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+    .identity{display:flex;align-items:center;gap:9px}
+    .mini-logo{width:43px;height:43px;border-radius:11px;object-fit:cover;border:1px solid rgba(85,170,255,.16);background:#06111c}
+    .mini-placeholder{display:grid;place-items:center;color:#76bfff;font-family:"Barlow Condensed",sans-serif;font-weight:900}
+    .name{
+      font-family:"Barlow Condensed",sans-serif;font-size:21px;line-height:.95;font-weight:900;
+      letter-spacing:.03em;text-transform:uppercase
+    }
+    .meta{margin-top:3px;color:#637d94;font-size:7px;text-transform:uppercase;letter-spacing:.09em}
+    .pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+    .pill{
+      display:inline-flex;align-items:center;min-height:23px;padding:5px 8px;border:1px solid rgba(85,170,255,.1);
+      border-radius:999px;color:#a6c9e5;background:rgba(8,24,39,.78);font-size:7px;font-weight:900
+    }
+    .info-row{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:9px}
+    .info-box{padding:9px;border:1px solid rgba(85,170,255,.08);border-radius:10px;background:rgba(3,10,17,.72)}
+    .info-box small{display:block;color:#587189;font-size:6px;text-transform:uppercase;letter-spacing:.1em;margin-bottom:3px}
+    .info-box strong{font-size:8px;color:#d5e8f7}
+    .note{margin-top:9px;color:#7891a8;font-size:8px;line-height:1.55}
+    .card-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}
+
+    /* ---------- Create forms ---------- */
+    .form-card{max-width:980px}
+    .form-tip{
+      padding:10px 11px;border:1px solid rgba(45,224,255,.14);border-radius:11px;
+      background:rgba(45,224,255,.035);color:#9ed8e7;font-size:8px;line-height:1.55;margin-bottom:13px
+    }
+
+    /* ---------- Admin ---------- */
+    .admin-grid{display:grid;grid-template-columns:215px 1fr;gap:14px}
+    .admin-tabs{
+      display:grid;gap:6px;height:max-content;padding:8px;border:1px solid rgba(85,170,255,.11);
+      border-radius:15px;background:#06111c;position:sticky;top:95px
+    }
+    .admin-tab{
+      border:1px solid transparent;border-radius:10px;padding:11px 10px;text-align:left;
+      background:transparent;color:#738da4;font-size:8px;font-weight:1000;letter-spacing:.08em
+    }
+    .admin-tab.active,.admin-tab:hover{background:#0a1928;border-color:rgba(64,168,255,.15);color:#fff}
+    .admin-count{
+      float:right;min-width:18px;height:18px;display:grid;place-items:center;border-radius:999px;
+      background:rgba(14,108,255,.12);color:#8dcbff;font-size:7px
+    }
+    .table-shell{overflow:auto;border:1px solid rgba(85,170,255,.09);border-radius:13px}
+    table{width:100%;min-width:760px;border-collapse:collapse}
+    th,td{padding:11px;border-bottom:1px solid rgba(85,170,255,.08);text-align:left;font-size:8px;vertical-align:top}
+    th{color:#587189;font-size:7px;text-transform:uppercase;letter-spacing:.1em}
+    tr:last-child td{border-bottom:0}
+    .search-bar{position:relative}.search-bar input{padding-right:40px}.search-icon{position:absolute;right:12px;top:12px;color:#57718a}
+
+    /* ---------- Modal / toast ---------- */
+    .modal-backdrop{
+      position:fixed;inset:0;z-index:120;display:none;align-items:center;justify-content:center;
+      padding:16px;background:rgba(0,0,0,.72)
+    }
+    .modal-backdrop.open{display:flex}
+    .modal-box{
+      width:min(680px,100%);max-height:90vh;overflow:auto;padding:19px;border:1px solid rgba(85,170,255,.2);
+      border-radius:19px;background:#06111d;box-shadow:var(--shadow)
+    }
+    .modal-top{display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .modal-top h3{margin:0;font-family:"Barlow Condensed",sans-serif;font-size:22px;letter-spacing:.04em;text-transform:uppercase}
+    .close{
+      width:34px;height:34px;border-radius:9px;border:1px solid rgba(85,170,255,.12);background:#0a1826;color:#a4bdd3
+    }
+    #toast{
+      position:fixed;right:15px;bottom:15px;z-index:150;display:none;max-width:360px;
+      padding:12px 14px;border-radius:12px;border:1px solid rgba(85,170,255,.16);
+      background:#06111d;box-shadow:var(--shadow);font-size:9px;line-height:1.55
+    }
+    #toast.show{display:block}
+    #toast.ok{border-color:rgba(36,214,138,.24);color:#aaf3d1}
+    #toast.error{border-color:rgba(255,97,125,.24);color:#ffc1cc}
+
+    @media (max-width:1020px){
+      .auth-layout{grid-template-columns:1fr}
+      .auth-hero{min-height:0}
+      .member-grid{grid-template-columns:1fr}
+      .quick-grid{grid-template-columns:1fr 1fr}
+      .admin-grid{grid-template-columns:1fr}
+      .admin-tabs{position:static;display:flex;overflow:auto}
+      .admin-tab{white-space:nowrap}
+    }
+    @media (max-width:760px){
+      .public-nav{grid-template-columns:auto 1fr auto}
+      .brand-title{font-size:22px}
+      .brand-logo{width:42px;height:42px}
+      .brand-sub{display:none}
+      .nav-action{font-size:7px;padding:8px}
+      .nav-left{order:3}
+      .nav-left .nav-action:first-child{display:none}
+      .public-nav{grid-template-columns:1fr auto}
+      .nav-right{justify-content:flex-end}
+      .brand-center{justify-content:flex-start}
+      .auth-hero{padding:23px 19px}
+      .auth-hero h1{font-size:57px}
+      .feature-grid{grid-template-columns:1fr}
+      .auth-card{padding:20px 16px}
+      .field-grid,.field-grid-3{grid-template-columns:1fr}
+      .full{grid-column:auto}
+      .quick-grid{grid-template-columns:1fr 1fr}
+      .app-nav{grid-template-columns:auto 1fr auto;gap:8px}
+      .app-nav-links{grid-column:1/-1;grid-row:2;justify-content:flex-start;padding-bottom:7px}
+      .profile-meta{display:none}
+      .page{padding-top:18px}
+    }
+    @media (max-width:480px){
+      .quick-grid{grid-template-columns:1fr}
+      .auth-title .title{font-size:37px}
+      .title{font-size:33px}
+      .hero h2{font-size:30px}
+      .info-row{grid-template-columns:1fr}
+      .app-brand strong{font-size:19px}
+      .public-nav{min-height:69px}
+    }
   </style>
 </head>
 <body>
   <div class="topline"></div>
-  <header>
-    <div class="nav">
-      <div class="nav-left"><button id="nav-admin" class="btn btn-primary btn-small" type="button">ADMIN ACCESS</button></div>
-      <div class="nav-center">
-        <div class="brand-mark" aria-hidden="true"><img src="./7th-universe-esports-logo.png" alt="7TH UNIVERSE ESPORTS"></div>
-        <div><div class="brand-title">7TH UNIVERSE</div><div class="brand-sub">FREE FIRE ESPORTS • PRACTICE & RECRUITMENT</div></div>
+
+  <div id="app"></div>
+
+  <div id="modalBackdrop" class="modal-backdrop" aria-hidden="true">
+    <div class="modal-box">
+      <div class="modal-top">
+        <h3 id="modalTitle">Details</h3>
+        <button class="close" id="modalClose" type="button">×</button>
       </div>
-      <div class="nav-right"><button id="nav-register" class="btn btn-primary btn-small" type="button">REGISTER NEW ACCOUNT</button><button id="nav-logout" class="btn btn-red btn-small hidden" type="button">LOGOUT</button></div>
+      <div id="modalBody" style="margin-top:14px"></div>
     </div>
-  </header>
+  </div>
 
-  <main>
-    <section id="public-landing">
-      <div id="public-view" class="landing-wrap">
-        <div class="card login-card">
-          <div class="login-brand">
-            <div class="brand-mark" aria-hidden="true"><img src="./7th-universe-esports-logo.png" alt="7TH UNIVERSE ESPORTS"></div>
-            <div><strong>7TH UNIVERSE</strong><span>FREE FIRE ESPORTS COMMUNITY</span></div>
-          </div>
-          <div class="login-head">
-            <div class="kicker">Member Access</div>
-            <h1 class="title">ESPORTS LOGIN</h1>
-            <p>Approved leaders and sub-leaders use their registered account to enter the private practice and recruitment arena.</p>
-          </div>
-          <form id="login-form" novalidate style="margin-top:17px">
-            <div class="field-grid">
-              <label class="full">ACCOUNT EMAIL / MOBILE<input id="login-identifier" type="text" autocomplete="username" placeholder="leader@example.com or 03XXXXXXXXX" required /></label>
-              <label class="full">PASSWORD<input id="login-password" type="password" autocomplete="current-password" placeholder="Your password" required /></label>
-            </div>
-            <div class="center-actions"><button class="btn btn-primary" type="submit">LOGIN TO ESPORTS</button><button id="forgot-password" class="btn btn-ghost" type="button">FORGOT PASSWORD?</button></div>
-            <div id="login-status" class="status"></div>
-            <div style="text-align:center;color:#4f6b83;font-size:7px;font-weight:900;letter-spacing:.16em;margin-top:12px;text-transform:uppercase">BLUE ESPORTS EDITION • 7TH UNIVERSE</div>
-          <div class="secure-strip" style="margin-top:12px"><b>PRIVATE MEMBER AREA:</b> Practice challenges, recruitment tools, team posts and administration are available after authentication and approval.</div>
-          </form>
-        </div>
-
-        <div class="preview-grid" aria-label="Platform features">
-          <div class="card preview"><div class="preview-icon">⚔</div><h3>CLASH SQUAD PRACTICE</h3><p>Post a professional open challenge for everyone in the 7TH UNIVERSE esports community.</p></div>
-          <div class="card preview"><div class="preview-icon">◎</div><h3>TEAM / PLAYER RECRUITMENT</h3><p>Publish role, availability and competitive recruitment requirements in one place.</p></div>
-        </div>
-      </div>
-
-      <div id="register-view" class="landing-wrap hidden">
-        <div class="card login-card">
-          <div class="login-brand"><div class="brand-mark"><img src="./7th-universe-esports-logo.png" alt="7TH UNIVERSE ESPORTS"></div><div><strong>CREATE ACCOUNT</strong><span>7TH UNIVERSE ESPORTS</span></div></div>
-          <div class="login-head"><div class="kicker">New Member</div><h1 class="title">REGISTER</h1><p>Register one Team Leader / IGL or Sub-Leader. A team may have a maximum of two website members.</p></div>
-          <form id="register-form" novalidate style="margin-top:17px">
-            <div class="field-grid">
-              <label>TEAM NAME<input id="register-team" type="text" maxlength="80" placeholder="Your team name" required /></label>
-              <label>MEMBER ROLE<select id="register-role" required><option value="leader">Team Leader / IGL</option><option value="sub_leader">Sub-Leader</option></select></label>
-              <label>MEMBER NAME<input id="register-name" type="text" maxlength="80" placeholder="Leader / Sub-Leader name" required /></label>
-              <label>CONTACT NUMBER<input id="register-contact" type="tel" maxlength="30" placeholder="03XXXXXXXXX" required /></label>
-              <label class="full">ACCOUNT EMAIL<input id="register-email" type="email" autocomplete="email" placeholder="leader@example.com" required /></label>
-              <label>PASSWORD<input id="register-password" type="password" autocomplete="new-password" minlength="8" placeholder="Minimum 8 characters" required /></label>
-              <label>CONFIRM PASSWORD<input id="register-password-confirm" type="password" autocomplete="new-password" minlength="8" placeholder="Re-enter password" required /></label>
-              <label class="full">TEAM LOGO — OPTIONAL<input id="register-logo" type="file" accept="image/jpeg,image/png,image/webp" /><div class="hint">PNG / JPG / WEBP • Maximum 3 MB</div></label>
-            </div>
-            <div class="secure-strip" style="margin-top:12px"><b>APPROVAL:</b> Registration is submitted as <b>PENDING</b>. An administrator must approve the account before the member area becomes accessible.</div>
-            <div class="center-actions"><button class="btn btn-primary" type="submit">SUBMIT REGISTRATION</button><button id="back-login" class="btn btn-ghost" type="button">BACK TO LOGIN</button></div>
-            <div id="register-status" class="status"></div>
-          </form>
-        </div>
-      </div>
-    </section>
-
-    <section id="member-dashboard" class="section">
-      <div class="container">
-        <div class="section-head">
-          <div><div class="kicker">Member Arena</div><h2 class="title">7TH UNIVERSE ESPORTS</h2><div id="member-identity" class="desc">Loading team account...</div></div><span id="member-status-badge" class="badge badge-blue">CHECKING ACCOUNT</span></div>
-        <div id="member-access-gate" class="member-access-gate hidden"><div class="access-gate-icon">🔒</div><div class="kicker">PRIVATE ESPORTS AREA</div><h3 style="font-family:'Barlow Condensed',sans-serif;font-size:30px;margin:7px 0">LOGIN + ADMIN APPROVAL REQUIRED</h3><p class="desc" style="margin:0 auto">Practice, Recruitment, My Posts and other member tools are available only after your account is approved.</p><div id="member-access-gate-status" class="secure-strip" style="max-width:600px;margin:14px auto 0">WAITING</div></div>
-
-        <div class="member-tabs" role="tablist" aria-label="Esports member sections">
-          <button class="member-tab active" data-member-section="overview">OVERVIEW</button>
-          <button class="member-tab" data-member-section="practice">PRACTICE</button>
-          <button class="member-tab" data-member-section="recruitment">RECRUITMENT</button>
-          <button class="member-tab" data-member-section="my-posts">MY POSTS</button>
-        </div>
-
-        <div id="member-section-overview" class="member-view active">
-          <div class="card"><div class="panel-head"><div><div class="kicker">Platform Rules</div><h3>ESPORTS CODE</h3><div class="subtle">Keep practice challenges serious, clear and respectful.</div></div><span class="badge badge-blue">MEMBER AREA</span></div><div class="rules-grid" id="rules-grid"></div></div>
-          <div class="dashboard-note"><span><b>Challenge audience:</b> EVERYONE. Specific opponent/team selection is not part of the challenge form.</span><span><b>Team registration:</b> Maximum 2 website members — Leader/IGL + Sub-Leader.</span></div>
-        </div>
-
-        <div id="member-section-practice" class="member-view">
-          <div class="card">
-            <div class="panel-head"><div><div class="kicker">Clash Squad Arena</div><h3>PRACTICE CHALLENGES</h3><div class="subtle">Create an open Free Fire practice challenge visible to everyone.</div></div><span class="badge badge-green">OPEN ARENA</span></div>
-            <form id="challenge-form" novalidate>
-              <div class="field-grid"><label>MATCH TYPE<select id="challenge-match-type"><option value="SINGLE">SINGLE MATCH</option><option value="BEST OF 3">BEST OF 3</option></select></label><label>FORMAT<select id="challenge-format"><option value="SQUAD">SQUAD</option><option value="TRIO">TRIO</option><option value="DUO">DUO</option><option value="SOLO">SOLO</option></select></label><label>MATCH TIME<input id="challenge-time" type="datetime-local" required /></label><label>CONTACT / WHATSAPP<input id="challenge-contact" type="tel" maxlength="30" required placeholder="03XXXXXXXXX" /></label><label class="full">ADDITIONAL NOTES<textarea id="challenge-notes" maxlength="500" placeholder="Example: Serious competitive teams only."></textarea></label></div>
-              <div class="secure-strip" style="margin-top:12px"><b>AUDIENCE:</b> EVERYONE</div>
-              <div class="center-actions" style="justify-content:flex-start"><button id="challenge-submit" class="btn btn-primary" type="submit">POST OPEN CHALLENGE</button></div><div id="challenge-status" class="status"></div>
-            </form>
-            <div class="divider"></div><div class="kicker">Live Practice Board</div><div id="live-challenge-list" class="challenge-list" style="margin-top:9px"><div class="empty">Loading practice challenges...</div></div>
-          </div>
-        </div>
-
-        <div id="member-section-recruitment" class="member-view">
-          <div class="card">
-            <div class="panel-head"><div><div class="kicker">Competitive Recruitment</div><h3>RECRUITMENT</h3><div class="subtle">Post a team requirement or present yourself as a player looking for a team.</div></div><span class="badge badge-blue">TEAM + PLAYER</span></div>
-            <form id="recruitment-form" novalidate>
-              <div class="field-grid"><label class="full">LISTING TYPE<select id="recruitment-type"><option value="TEAM_RECRUITMENT">TEAM RECRUITMENT — WE NEED PLAYERS</option><option value="PLAYER_RECRUITMENT">PLAYER RECRUITMENT — I NEED A TEAM</option></select></label></div>
-              <div id="team-recruit-fields">
-                <div class="field-grid"><label>TEAM NAME<input id="recruit-team-name" disabled /></label><label>PLAYERS NEEDED<select id="recruit-players-needed"><option>1</option><option>2</option><option>3</option><option>4</option></select></label><label class="full">LOOKING FOR<select id="recruit-looking-for" multiple size="5"><option value="Rusher">Rusher</option><option value="Sniper">Sniper</option><option value="Support">Support</option><option value="Entry Fragger">Entry Fragger</option><option value="All-Rounder">All-Rounder</option></select><div class="hint">Select one or more roles.</div></label></div>
-              </div>
-              <div id="player-recruit-fields" class="hidden"><div class="field-grid"><label>PLAYER IGN<input id="player-ign" maxlength="50" placeholder="Free Fire IGN" /></label><label>FREE FIRE UID<input id="player-uid" maxlength="20" placeholder="UID" /></label><label class="full">PREFERRED ROLE<select id="player-role"><option value="Rusher">Rusher</option><option value="Sniper">Sniper</option><option value="Support">Support</option><option value="Entry Fragger">Entry Fragger</option><option value="All-Rounder">All-Rounder</option></select></label></div></div>
-              <div class="field-grid"><label>AVAILABILITY<input id="recruit-availability" placeholder="Example: 5 PM – 11 PM" required /></label><label>AGE / REQUIREMENT<input id="recruit-age" placeholder="Example: 16+" required /></label><label>CONTACT / WHATSAPP<input id="recruit-contact" type="tel" maxlength="30" required placeholder="03XXXXXXXXX" /></label><label>EXPERIENCE<input id="recruit-experience" maxlength="180" placeholder="Competitive experience" /></label><label class="full">EXTRA DETAILS<textarea id="recruit-notes" maxlength="600" placeholder="Requirements, trial details, preferred timings, etc."></textarea></label></div>
-              <div class="center-actions" style="justify-content:flex-start"><button class="btn btn-primary" type="submit">PUBLISH RECRUITMENT</button></div><div id="recruitment-status" class="status"></div>
-            </form>
-            <div class="divider"></div><div class="kicker">Active Recruitment Board</div><div id="live-recruitment-list" class="challenge-list" style="margin-top:9px"><div class="empty">Loading recruitment...</div></div>
-          </div>
-        </div>
-
-        <div id="member-section-my-posts" class="member-view">
-          <div class="member-grid">
-            <div class="card sticky-card"><div class="panel-head"><div><div class="kicker">Your Team</div><h3>ACCOUNT</h3></div><span id="my-team-status" class="badge badge-green">APPROVED</span></div><div id="my-team-card"></div></div>
-            <div class="card" style="grid-column:span 2"><div class="panel-head"><div><div class="kicker">Your Activity</div><h3>MY POSTS</h3><div class="subtle">Your latest practice and recruitment posts.</div></div></div><div id="my-posts-list"><div class="empty">Loading your posts...</div></div></div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="admin-page">
-      <div class="container">
-        <div id="admin-login-view" class="admin-login card">
-          <div class="panel-head"><div><div class="kicker">Restricted Control</div><h3>ADMIN LOGIN</h3><div class="subtle">Administrative access uses the separate admin session.</div></div><span class="badge badge-red">PRIVATE</span></div>
-          <form id="admin-login-form" novalidate><div class="field-grid"><label class="full">ADMIN EMAIL<input id="admin-email" type="email" autocomplete="username" placeholder="admin@example.com" required /></label><label class="full">ADMIN PASSWORD<input id="admin-password" type="password" autocomplete="current-password" required /></label></div><div class="center-actions" style="justify-content:flex-start"><button id="admin-login-submit" class="btn btn-primary" type="submit">LOGIN AS ADMIN</button><button id="admin-back" class="btn btn-ghost" type="button">BACK</button></div><div id="admin-login-status" class="status"></div></form>
-        </div>
-
-        <div id="admin-dashboard" class="hidden">
-          <div class="admin-head"><div><div class="kicker">7TH UNIVERSE • ADMIN</div><h2 class="title">CONTROL CENTER</h2><div id="admin-session-label" class="desc">Authenticated administrator</div></div><button id="admin-logout" class="btn btn-red btn-small" type="button">ADMIN LOGOUT</button></div>
-          <div class="admin-tabs"><button class="admin-tab active" data-admin-section="registrations">REGISTRATIONS</button><button class="admin-tab" data-admin-section="teams">TEAMS</button><button class="admin-tab" data-admin-section="practice">PRACTICE</button><button class="admin-tab" data-admin-section="recruitment">RECRUITMENT</button></div>
-
-          <div id="admin-section-registrations" class="admin-panel-view active"><section class="admin-section"><div class="admin-section-head"><div><div class="kicker">First Priority</div><h3>PENDING REGISTRATIONS</h3><div class="subtle">New team members appear here as PENDING until an admin approves them.</div></div><span class="badge badge-red">REVIEW</span></div><div class="card"><div class="admin-table-shell"><table class="admin-table"><thead><tr><th>Member</th><th>Team</th><th>Role</th><th>Status</th><th>Action</th></tr></thead><tbody id="pending-registration-table"><tr><td colspan="5">Loading registrations...</td></tr></tbody></table></div></div></section></div>
-          <div id="admin-section-teams" class="admin-panel-view"><section class="admin-section"><div class="admin-section-head"><div><div class="kicker">Directory</div><h3>ALL TEAMS</h3><div class="subtle">Search and manage team status.</div></div></div><div class="card"><div class="search-bar"><input id="admin-team-search" type="search" placeholder="Search team name..." /><span class="search-icon">⌕</span></div><div class="admin-table-shell" style="margin-top:10px"><table class="admin-table"><thead><tr><th>Team</th><th>Members</th><th>Status</th><th>Action</th></tr></thead><tbody id="all-teams-table"><tr><td colspan="4">Loading teams...</td></tr></tbody></table></div></div></section></div>
-          <div id="admin-section-practice" class="admin-panel-view"><section class="admin-section"><div class="admin-section-head"><div><div class="kicker">Moderation</div><h3>PRACTICE CHALLENGES</h3><div class="subtle">Open/close challenges from the admin panel.</div></div></div><div class="card"><div class="admin-table-shell"><table class="admin-table"><thead><tr><th>Team</th><th>Match</th><th>Format</th><th>Time</th><th>Status</th><th>Action</th></tr></thead><tbody id="admin-practice-table"><tr><td colspan="6">Loading challenges...</td></tr></tbody></table></div></div></section></div>
-          <div id="admin-section-recruitment" class="admin-panel-view"><section class="admin-section"><div class="admin-section-head"><div><div class="kicker">Moderation</div><h3>RECRUITMENT POSTS</h3><div class="subtle">Open/close recruitment listings.</div></div></div><div class="card"><div class="admin-table-shell"><table class="admin-table"><thead><tr><th>Listing</th><th>Type</th><th>Looking For</th><th>Status</th><th>Action</th></tr></thead><tbody id="admin-recruitment-table"><tr><td colspan="5">Loading recruitment...</td></tr></tbody></table></div></div></section></div>
-          <div id="admin-status" class="status" style="margin-top:13px"></div>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <div id="modal-backdrop" class="modal-backdrop"><div id="modal" class="modal"></div></div>
   <div id="toast"></div>
-  <footer class="footer"><div class="container footer-inner"><span>7TH UNIVERSE • FREE FIRE ESPORTS</span><span>PRACTICE • RECRUITMENT • COMMUNITY</span><span>MEMBERS BY APPROVAL</span></div></footer>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="./script.js?v=esports-gvg-blue-v2"></script>
+  <script src="./script.js?v=esports-v6"></script>
 </body>
 </html>
