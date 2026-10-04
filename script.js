@@ -1,5 +1,5 @@
 /*
-  7TH UNIVERSE ESPORTS — FINAL
+  7TH UNIVERSE ESPORTS — FINAL TEAM CONTEXT FIX
   Simple frontend: index.html + script.js + logo only.
   Backend: Supabase Auth/DB/Storage + Railway/Baileys bridge.
 
@@ -8,7 +8,7 @@
   - Public writes are RPC-only; admin actions are verified by SECURITY DEFINER RPCs.
   - Registration creates the profile/team membership from the auth.users trigger.
   - Maximum 2 website members per team: Team Leader/IGL + Sub-Leader.
-  - Permanent ranking: WIN +3 / LOSS -3. Only approved results count.
+  - Permanent ranking: SOLO / DUO / SQUAD are separate point pools. WIN +3 / LOSS -3. Only approved results count.
 */
 (() => {
   "use strict";
@@ -51,6 +51,7 @@
     recruitment: [],
     results: [],
     rankings: [],
+    rankFormat: "ALL",
     registrations: [],
     teams: []
   };
@@ -122,7 +123,7 @@
     const code = String(error?.code || "");
 
     if (code === "42501" || /permission denied|not permitted|administrator access required/i.test(message)) {
-      return "Database denied this action. Run the latest ESPORTS SQL Parts 1–12 and make sure your admin profile is role=admin and status=approved.";
+      return "Database denied this action. Run the latest ESPORTS SQL Parts 1–15 and make sure your admin profile is role=admin and status=approved.";
     }
     if (code === "23505" || /duplicate key|already exists/i.test(message)) {
       return "This value already exists. Check the team name, email, or selected role.";
@@ -160,6 +161,42 @@
     return data || null;
   }
 
+  // Robust team-context lookup: avoids losing the nested `teams` record because of
+  // client-side RLS/nested-select visibility. The DB function checks the caller's own approved membership + active team before returning context.
+  async function getApprovedTeamContext() {
+    const { data, error } = await supabase.rpc("get_my_team_context");
+    if (error) throw error;
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row || !row.team_id) return null;
+
+    state.membership = {
+      id: row.membership_id,
+      team_id: row.team_id,
+      user_id: row.user_id,
+      role: row.member_role,
+      status: row.membership_status,
+      created_at: row.membership_created_at,
+      teams: {
+        id: row.team_id,
+        name: row.team_name,
+        logo_url: row.team_logo_url,
+        igl_name: row.team_igl_name,
+        status: row.team_status,
+        created_at: row.team_created_at,
+        updated_at: row.team_updated_at
+      }
+    };
+
+    state.team = state.membership.teams;
+    return state.team;
+  }
+
+  async function ensureApprovedTeam() {
+    const team = await getApprovedTeamContext();
+    if (!team) throw new Error("No approved active team membership was found for this account. Ask the administrator to re-check your team approval.");
+    return team;
+  }
+
   async function hydrateSession() {
     const { data: { session } } = await supabase.auth.getSession();
     state.user = session?.user || null;
@@ -191,42 +228,25 @@
         await supabase.auth.signOut();
         state.screen = "login";
         render();
-
-        const statusMessage = currentStatus === "rejected"
-          ? "Your registration was rejected by the administrator. You can submit registration again with the same email and password."
-          : currentStatus === "banned"
-            ? "Your account is banned."
-            : currentStatus === "approved"
-              ? "Your account is approved."
-              : "Your registration is pending administrator approval.";
-
-        showToast(statusMessage, "error");
+        showToast(
+          currentStatus === "banned" ? "Your account is banned." : "Your registration is pending administrator approval.",
+          "error"
+        );
         return;
       }
 
-      state.membership = await getMembership(state.user.id);
-      state.team = state.membership?.teams || null;
-
-      if (!state.isAdmin && (!state.membership || state.membership.status !== "approved" || state.team?.status !== "active")) {
-        const membershipStatus = state.membership?.status;
-        const teamStatus = state.team?.status;
-
-        await supabase.auth.signOut();
-        state.screen = "login";
-        render();
-
-        const message = membershipStatus === "rejected"
-          ? "Your registration was rejected by the administrator. You can submit registration again with the same email and password."
-          : teamStatus === "banned"
-            ? "Your team is banned."
-            : teamStatus === "removed"
-              ? "Your team has been removed by the administrator."
-              : membershipStatus === "banned"
-                ? "Your membership is banned."
-                : "Your team is not confirmed yet. Please wait for admin approval.";
-
-        showToast(message, "error");
-        return;
+      if (state.isAdmin) {
+        state.membership = await getMembership(state.user.id);
+        state.team = state.membership?.teams || null;
+      } else {
+        const approvedTeam = await getApprovedTeamContext();
+        if (!approvedTeam) {
+          await supabase.auth.signOut();
+          state.screen = "login";
+          render();
+          showToast("Your team is not confirmed yet. Please wait for admin approval.", "error");
+          return;
+        }
       }
 
       state.screen = "member";
@@ -284,7 +304,7 @@
               <div class="feature"><b>PERMANENT RANKING</b><span>Approved WIN +3 and LOSS −3 records never reset.</span></div>
               <div class="feature"><b>2 MEMBERS / TEAM</b><span>One Team Leader/IGL + one Sub-Leader only.</span></div>
             </div>
-            <div class="access-note"><b>APPROVAL FLOW:</b> Registration → Pending → Admin Review → Approved → Login. Rejected registrations can be submitted again using the same account.</div>
+            <div class="access-note"><b>APPROVAL FLOW:</b> Registration → Pending → Admin Review → Approved → Login.</div>
           </section>
 
           <section class="card auth-card">
@@ -340,7 +360,7 @@
           <label class="full">TEAM LOGO — OPTIONAL<input id="regLogo" type="file" accept="image/png,image/jpeg,image/webp"></label>
         </div>
         <div class="hint">Logo can be uploaded later from TEAM PROFILE after approval. PNG/JPG/WEBP • Maximum ${MAX_IMAGE_MB} MB.</div>
-        <div class="access-note" style="margin-top:13px"><b>IMPORTANT:</b> New registrations are reviewed by an administrator. A rejected registration can be submitted again with the same email/password; you do not need to create a second account.</div>
+        <div class="access-note" style="margin-top:13px"><b>IMPORTANT:</b> Email confirmation may be required by Supabase. Your registration record is created server-side even when no session is returned.</div>
         <div class="auth-actions">
           <button class="btn btn-primary" type="submit">SUBMIT REGISTRATION</button>
           <button class="btn btn-secondary" id="registerBackBtn" type="button">BACK TO LOGIN</button>
@@ -408,22 +428,17 @@
     try {
       if (!teamName || !name || !email || !phone) throw new Error("Complete all required fields.");
       if (!/^\+92\d{10}$/.test(phone)) throw new Error("Enter a valid Pakistan mobile number.");
-      if (!["leader", "sub_leader"].includes(role)) throw new Error("Invalid website member role.");
+      if (!['leader', 'sub_leader'].includes(role)) throw new Error("Invalid website member role.");
       if (password.length < 8) throw new Error("Password must be at least 8 characters.");
       if (password !== password2) throw new Error("Passwords do not match.");
       if (file && (file.size > MAX_IMAGE_MB * 1024 * 1024 || !/^image\/(png|jpeg|webp)$/.test(file.type))) {
         throw new Error(`Logo must be PNG/JPG/WEBP and ${MAX_IMAGE_MB} MB or smaller.`);
       }
 
-      /*
-        FIRST ATTEMPT: create a brand-new Auth account.
-        Existing rejected users cannot create a second Auth account with the same email.
-        In that case we fall through to the re-application flow below.
-      */
-      let signUpData = null;
-      let existingAccount = false;
-
-      const signUpResult = await supabase.auth.signUp({
+      // Do NOT upload the logo during signup. When email confirmation is enabled,
+      // Supabase can return a user with no active session, so the browser cannot
+      // safely upload to an authenticated storage path yet. Upload it later from Team Profile.
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -436,82 +451,14 @@
         }
       });
 
-      if (signUpResult.error) {
-        const msg = String(signUpResult.error.message || "");
-        if (/already registered|already exists|user already|email.*taken|duplicate/i.test(msg)) {
-          existingAccount = true;
-        } else {
-          throw signUpResult.error;
-        }
-      } else {
-        signUpData = signUpResult.data;
-        /* Supabase may intentionally return an obfuscated existing user. */
-        if (signUpData?.user && Array.isArray(signUpData.user.identities) && signUpData.user.identities.length === 0) {
-          existingAccount = true;
-        }
-      }
+      if (error) throw error;
+      if (!data?.user) throw new Error("Registration could not be created.");
+      if (data.session) await supabase.auth.signOut();
 
-      if (!existingAccount) {
-        if (!signUpData?.user) throw new Error("Registration could not be created.");
-        if (signUpData.session) await supabase.auth.signOut();
-
-        goLogin();
-        showToast("Registration submitted. Status: PENDING for administrator approval.");
-        return;
-      }
-
-      /*
-        EXISTING ACCOUNT FLOW:
-        The same email already exists, so authenticate with the supplied password.
-        Only a previously REJECTED registration is allowed to be submitted again.
-      */
-      await supabase.auth.signOut();
-
-      const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
-      if (loginError) {
-        throw new Error("This email is already registered. Use the current password for this account, or contact the administrator.");
-      }
-
-      const existingProfile = await getProfile(loginData.user.id);
-      if (!existingProfile) {
-        await supabase.auth.signOut();
-        throw new Error("This account exists but its ESPORTS registration record is missing. Contact the administrator.");
-      }
-
-      if (existingProfile.status === "rejected") {
-        const { error: reapplyError } = await supabase.rpc("resubmit_rejected_registration", {
-          p_team_name: teamName,
-          p_display_name: name,
-          p_phone: phone,
-          p_role: role
-        });
-        if (reapplyError) throw reapplyError;
-
-        await supabase.auth.signOut();
-        goLogin();
-        showToast("Registration submitted again successfully. Status: PENDING for administrator approval.");
-        return;
-      }
-
-      await supabase.auth.signOut();
-
-      if (existingProfile.status === "pending") {
-        throw new Error("This account is already pending administrator approval. You cannot submit another registration for it.");
-      }
-      if (existingProfile.status === "approved") {
-        throw new Error("This account is already approved. Please use LOGIN instead of registering again.");
-      }
-      if (existingProfile.status === "banned") {
-        throw new Error("This account is banned and cannot be registered again.");
-      }
-
-      throw new Error("This email is already registered.");
+      goLogin();
+      showToast("Registration submitted. Status: PENDING for administrator approval.");
     } catch (error) {
       console.error(error);
-      try { await supabase.auth.signOut(); } catch (_) {}
       showToast(friendlyError(error, "Registration failed."), "error");
     }
   }
@@ -640,8 +587,8 @@
     try {
       if (state.section === "dashboard") root.innerHTML = await dashboardPage();
       else if (state.section === "practice") { root.innerHTML = await practicePage(); bindPractice(); }
-      else if (state.section === "results") { root.innerHTML = await resultsPage(); bindResults(); }
-      else if (state.section === "rankings") root.innerHTML = await rankingsPage();
+      else if (state.section === "results") { const resultChallenges = await getMyResultChallenges(); root.innerHTML = await resultsPage(resultChallenges); bindResults(resultChallenges); }
+      else if (state.section === "rankings") { root.innerHTML = await rankingsPage(); bindRankings(); }
       else if (state.section === "recruitment") { root.innerHTML = recruitmentPage(); bindRecruitment(); }
       else if (state.section === "my-posts") root.innerHTML = await myPostsPage();
       else if (state.section === "team-profile") { root.innerHTML = teamProfilePage(); bindTeamProfile(); }
@@ -661,6 +608,7 @@
       .from("practice_challenges")
       .select("*")
       .eq("status", "open")
+      .in("format", ["SOLO", "DUO", "SQUAD"])
       .order("match_time", { ascending: true })
       .limit(100);
     if (error) throw error;
@@ -680,12 +628,18 @@
     return state.recruitment;
   }
 
-  async function getRankings() {
-    const { data, error } = await supabase
-      .from("team_rankings")
+  async function getRankings(format = "ALL") {
+    const target = String(format || "ALL").toUpperCase();
+    const source = target === "ALL" ? "team_rankings" : "team_rankings_by_format";
+    let query = supabase
+      .from(source)
       .select("*")
       .order("rank_number", { ascending: true })
       .limit(250);
+
+    if (target !== "ALL") query = query.eq("format", target);
+
+    const { data, error } = await query;
     if (error) throw error;
     state.rankings = data || [];
     return state.rankings;
@@ -732,16 +686,26 @@
   }
 
   function challengeCard(challenge) {
+    const ownTeam = state.team?.id && challenge.team_id === state.team.id;
+    const accepted = challenge.status === "accepted";
+    const acceptedByMe = challenge.accepted_by_team_id && state.team?.id === challenge.accepted_by_team_id;
     return `
       <article class="challenge-card">
         <div class="row-between">
           <div class="identity">${logo(challenge.team_logo_url, challenge.team_name || "7U")}<div><div class="name">${esc(challenge.team_name)}</div><div class="meta">FREE FIRE • CLASH SQUAD • EVERYONE</div></div></div>
-          <span class="badge badge-green">OPEN</span>
+          <span class="badge ${accepted ? "badge-cyan" : "badge-green"}">${accepted ? "ACCEPTED" : "OPEN"}</span>
         </div>
         <div class="pills"><span class="pill">${esc(challenge.match_type)}</span><span class="pill">${esc(challenge.format)}</span><span class="pill">EVERYONE</span></div>
         <div class="info-row"><div class="info-box"><small>Match Time</small><strong>${esc(formatDate(challenge.match_time))}</strong></div><div class="info-box"><small>Contact</small><strong>${esc(challenge.contact || "—")}</strong></div></div>
         ${challenge.notes ? `<div class="note">${esc(challenge.notes)}</div>` : ""}
-        <div class="card-actions"><button class="btn btn-primary btn-small" data-wa="${esc(challenge.contact || "")}">CONTACT</button><button class="btn btn-dark btn-small" data-json='${esc(JSON.stringify(challenge))}'>DETAILS</button></div>
+        ${accepted ? `<div class="note" style="border-color:rgba(45,224,255,.18);color:#9eeaff;background:rgba(45,224,255,.04)"><b>ACCEPTED BY:</b> ${esc(challenge.accepted_by_team_name || "Another Team")}</div>` : ""}
+        <div class="card-actions">
+          <button class="btn btn-primary btn-small" data-wa="${esc(challenge.contact || "")}">CONTACT</button>
+          <button class="btn btn-dark btn-small" data-json='${esc(JSON.stringify(challenge))}'>DETAILS</button>
+          ${!ownTeam && !accepted ? `<button class="btn btn-cyan btn-small" data-accept-challenge="${esc(challenge.id)}">ACCEPT CHALLENGE</button>` : ""}
+          ${acceptedByMe ? `<span class="badge badge-cyan">YOUR ACCEPTED MATCH</span>` : ""}
+          ${ownTeam && !accepted ? `<span class="badge badge-blue">YOUR CHALLENGE</span>` : ""}
+        </div>
       </article>`;
   }
 
@@ -773,10 +737,10 @@
         <div style="margin-bottom:16px"><div class="kicker">LIVE ARENA</div><h1 class="title">CLASH SQUAD PRACTICE</h1><div class="desc">Post a practice challenge for <b>EVERYONE</b>. There is intentionally no opponent-team field.</div></div>
         <section class="panel form-card">
           <div class="panel-head"><div><div class="kicker">CREATE</div><h3>PRACTICE CHALLENGE</h3></div><span class="badge badge-blue">EVERYONE</span></div>
-          <div class="form-tip">FREE FIRE • CLASH SQUAD • EVERYONE • SINGLE / BEST OF 3 • SQUAD / TRIO / DUO / SOLO</div>
+          <div class="form-tip">FREE FIRE • CLASH SQUAD • EVERYONE • SINGLE / BEST OF 3 • SOLO / DUO / SQUAD</div>
           <form id="practiceForm"><div class="field-grid">
             <label>MATCH TYPE *<select id="practiceMatchType"><option value="SINGLE">SINGLE MATCH</option><option value="BEST OF 3">BEST OF 3</option></select></label>
-            <label>FORMAT *<select id="practiceFormat"><option value="SQUAD">SQUAD</option><option value="TRIO">TRIO</option><option value="DUO">DUO</option><option value="SOLO">SOLO</option></select></label>
+            <label>FORMAT *<select id="practiceFormat"><option value="SQUAD">SQUAD</option><option value="DUO">DUO</option><option value="SOLO">SOLO</option></select></label>
             <label>MATCH TIME *<input id="practiceTime" type="datetime-local" required></label>
             <label>CONTACT / WHATSAPP *<input id="practiceContact" value="${esc(state.profile?.phone || "")}" required placeholder="03XXXXXXXXX"></label>
             <label class="full">ADDITIONAL NOTES<textarea id="practiceNotes" maxlength="500"></textarea></label>
@@ -793,7 +757,7 @@
   async function submitPractice(event) {
     event.preventDefault();
     try {
-      if (!state.team) throw new Error("Approved team membership is required.");
+      const team = state.team || await ensureApprovedTeam();
       const raw = document.getElementById("practiceTime")?.value || "";
       const date = new Date(raw);
       if (Number.isNaN(date.getTime())) throw new Error("Choose a valid match time.");
@@ -801,9 +765,9 @@
       if (!/^\+92\d{10}$/.test(contact)) throw new Error("Enter a valid Pakistan contact number.");
 
       const { error } = await supabase.rpc("create_practice_challenge", {
-        p_team_id: state.team.id,
-        p_team_name: state.team.name,
-        p_team_logo_url: state.team.logo_url || null,
+        p_team_id: team.id,
+        p_team_name: team.name,
+        p_team_logo_url: team.logo_url || null,
         p_match_type: document.getElementById("practiceMatchType")?.value,
         p_match_time: date.toISOString(),
         p_format: document.getElementById("practiceFormat")?.value,
@@ -821,12 +785,18 @@
 
   /* ========================= RESULTS ========================= */
 
+  async function getMyResultChallenges() {
+    const { data, error } = await supabase.rpc("get_my_result_challenges");
+    if (error) throw error;
+    return data || [];
+  }
+
   async function getMyResults() {
     const { data, error } = await supabase
       .from("team_match_results")
       .select("*")
       .eq("team_id", state.team?.id || EMPTY_UUID)
-      .order("played_at", { ascending: false })
+      .order("created_at", { ascending: false })
       .limit(100);
     if (error) throw error;
     return data || [];
@@ -837,7 +807,7 @@
       .from("team_match_results")
       .select("*")
       .eq("status", "approved")
-      .order("played_at", { ascending: false })
+      .order("created_at", { ascending: false })
       .limit(100);
     if (error) throw error;
     return data || [];
@@ -845,62 +815,234 @@
 
   function resultCard(row) {
     const win = row.outcome === "WIN";
-    return `<div class="challenge-card"><div class="row-between"><div><div class="name">VS ${esc(row.opponent_team_name)}</div><div class="meta">${esc(row.match_type)} • ${esc(row.format)} • ${esc(formatDate(row.played_at))}</div></div><span class="badge ${win ? "badge-green" : "badge-danger"}">${win ? "WIN +3" : "LOSS −3"}</span></div><div class="pills"><span class="pill">${esc(String(row.status || "pending").toUpperCase())}</span>${row.opponent_team_uid ? `<span class="pill">UID ${esc(row.opponent_team_uid)}</span>` : ""}</div>${row.notes ? `<div class="note">${esc(row.notes)}</div>` : ""}${row.proof_url ? `<div class="card-actions"><button class="btn btn-dark btn-small" data-proof="${esc(row.proof_url)}">VIEW PROOF</button></div>` : ""}</div>`;
+    const winner = row.winner_team_name || (win ? state.team?.name : row.opponent_team_name) || "Winner";
+    const loser = row.loser_team_name || (!win ? state.team?.name : row.opponent_team_name) || "Loser";
+    return `<article class="result-record">
+      <div class="result-record-top">
+        <div><div class="kicker">${row.challenge_id ? "CHALLENGE RESULT" : "LEGACY RESULT"}</div><div class="result-matchup"><strong>${esc(winner)}</strong><span>VS</span><strong>${esc(loser)}</strong></div></div>
+        <span class="badge ${row.status === "approved" ? "badge-green" : row.status === "rejected" ? "badge-danger" : "badge-warn"}">${esc(String(row.status || "pending").toUpperCase())}</span>
+      </div>
+      ${row.score ? `<div class="result-score-line"><span>SCORE</span><strong>${esc(row.score)}</strong><em>WIN +3 • LOSS −3</em></div>` : ""}
+      ${row.challenge_id ? `<div class="result-meta-grid"><div><small>CHALLENGE</small><b>${esc(row.match_type || "MATCH")}</b></div><div><small>FORMAT</small><b>${esc(row.format || "—")}</b></div><div><small>SUBMITTED</small><b>${esc(formatDate(row.created_at))}</b></div></div>` : ""}
+      <div class="result-proof-row">
+        ${row.proof_challenge_url ? `<button class="btn btn-dark btn-small" data-proof="${esc(row.proof_challenge_url)}" data-proof-title="ACCEPTED CHALLENGE PROOF">SCREENSHOT 1</button>` : ""}
+        ${row.proof_result_url || row.proof_url ? `<button class="btn btn-dark btn-small" data-proof="${esc(row.proof_result_url || row.proof_url)}" data-proof-title="MATCH RESULT PROOF">SCREENSHOT 2</button>` : ""}
+      </div>
+    </article>`;
   }
 
-  async function resultsPage() {
+  function challengeOptionLabel(challenge) {
+    const posted = challenge.team_name || "Team";
+    const accepted = challenge.accepted_by_team_name || "Opponent";
+    return `${posted}  vs  ${accepted} • ${challenge.match_type} • ${challenge.format} • ${formatDate(challenge.match_time)}`;
+  }
+
+  function challengeById(challenges, id) {
+    return challenges.find((item) => item.id === id) || null;
+  }
+
+  function renderResultChallengeDetails(challenge) {
+    const box = document.getElementById("resultChallengeDetails");
+    const winner = document.getElementById("resultWinnerTeam");
+    const loser = document.getElementById("resultLoserTeam");
+    if (!box || !winner || !loser) return;
+
+    if (!challenge) {
+      box.innerHTML = `<div class="result-empty-state"><strong>NO CHALLENGE SELECTED</strong><span>Select an accepted practice challenge to continue.</span></div>`;
+      winner.innerHTML = `<option value="">Select winner team</option>`;
+      loser.innerHTML = `<option value="">Select loser team</option>`;
+      const resultFormat = document.getElementById("resultFormat");
+      if (resultFormat) resultFormat.value = "";
+      return;
+    }
+
+    const teams = [
+      { id: challenge.team_id, name: challenge.team_name },
+      { id: challenge.accepted_by_team_id, name: challenge.accepted_by_team_name }
+    ].filter((item, index, arr) => item.id && arr.findIndex((x) => x.id === item.id) === index);
+
+    box.innerHTML = `
+      <div class="result-challenge-head"><div><small>SELECTED CHALLENGE</small><strong>${esc(challenge.team_name)} <span>VS</span> ${esc(challenge.accepted_by_team_name || "Opponent")}</strong></div><span class="badge badge-cyan">ACCEPTED</span></div>
+      <div class="result-meta-grid"><div><small>MATCH</small><b>${esc(challenge.match_type)}</b></div><div><small>FORMAT</small><b>${esc(challenge.format)}</b></div><div><small>TIME</small><b>${esc(formatDate(challenge.match_time))}</b></div></div>`;
+
+    const resultFormat = document.getElementById("resultFormat");
+    if (resultFormat) resultFormat.value = String(challenge.format || "").toUpperCase();
+
+    const options = teams.map((team) => `<option value="${esc(team.id)}">${esc(team.name)}</option>`).join("");
+    winner.innerHTML = `<option value="">Select winner team</option>${options}`;
+    loser.innerHTML = `<option value="">Select loser team</option>${options}`;
+
+    const me = state.team?.id;
+    if (me && teams.length === 2) {
+      const other = teams.find((team) => team.id !== me);
+      winner.value = me;
+      loser.value = other?.id || "";
+    }
+  }
+
+  async function resultsPage(challenges = null) {
     const [mine, verified] = await Promise.all([getMyResults(), getVerifiedResults()]);
+    if (!Array.isArray(challenges)) challenges = await getMyResultChallenges();
+    const noChallenges = !challenges.length;
     return `
       <div class="container">
-        <div style="margin-bottom:16px"><div class="kicker">PERMANENT RECORD</div><h1 class="title">MATCH RESULTS</h1><div class="desc">Submit completed matches. <b>WIN = +3</b> • <b>LOSS = −3</b>. Approved records remain in the all-time ranking.</div></div>
-        <section class="panel form-card">
-          <div class="panel-head"><div><div class="kicker">SUBMIT FOR REVIEW</div><h3>TEAM RESULT</h3></div><span class="badge badge-blue">ADMIN REVIEW</span></div>
-          <form id="resultForm"><div class="field-grid">
-            <label>OPPONENT TEAM NAME *<input id="resultOpponent" maxlength="80" required></label>
-            <label>OPPONENT UID<input id="resultOpponentUid" maxlength="30"></label>
-            <label>MATCH TYPE *<select id="resultMatchType"><option value="SINGLE">SINGLE MATCH</option><option value="BEST OF 3">BEST OF 3</option></select></label>
-            <label>FORMAT *<select id="resultFormat"><option value="SQUAD">SQUAD</option><option value="TRIO">TRIO</option><option value="DUO">DUO</option><option value="SOLO">SOLO</option></select></label>
-            <label>OUTCOME *<select id="resultOutcome"><option value="WIN">WIN (+3)</option><option value="LOSS">LOSS (−3)</option></select></label>
-            <label>PLAYED AT *<input id="resultPlayedAt" type="datetime-local" required></label>
-            <label class="full">PROOF SCREENSHOT — OPTIONAL<input id="resultProof" type="file" accept="image/png,image/jpeg,image/webp"></label>
-            <label class="full">NOTES<textarea id="resultNotes" maxlength="500"></textarea></label>
-          </div><div class="hint">Proof image: PNG/JPG/WEBP • Maximum ${MAX_IMAGE_MB} MB.</div><div class="auth-actions" style="justify-content:flex-start"><button class="btn btn-primary" type="submit">SUBMIT RESULT</button></div></form>
+        <div style="margin-bottom:16px"><div class="kicker">SUBMIT • VERIFY • RANK</div><h1 class="title">MATCH RESULTS</h1><div class="desc">Choose the accepted challenge first, record the winner, loser and final score, then attach both proof screenshots. <b>Only after Admin approval:</b> Winner +3 • Loser −3.</div></div>
+
+        <section class="panel result-submit-panel">
+          <div class="panel-head"><div><div class="kicker">STEP-BY-STEP SUBMISSION</div><h3>TEAM RESULT</h3></div><span class="badge badge-blue">ADMIN APPROVAL</span></div>
+          <div class="result-steps">
+            <div class="result-step"><span>01</span><div><b>SELECT CHALLENGE</b><small>Choose the accepted practice challenge.</small></div></div>
+            <div class="result-step"><span>02</span><div><b>ENTER RESULT</b><small>Winner • Loser • Final score.</small></div></div>
+            <div class="result-step"><span>03</span><div><b>ADD PROOF</b><small>Two screenshots for verification.</small></div></div>
+          </div>
+
+          <form id="resultForm">
+            <label class="full">ACCEPTED CHALLENGE *
+              <select id="resultChallenge" ${noChallenges ? "disabled" : "required"}>
+                <option value="">${noChallenges ? "No accepted challenges available" : "Select an accepted challenge"}</option>
+                ${challenges.map((challenge) => `<option value="${esc(challenge.id)}">${esc(challengeOptionLabel(challenge))}</option>`).join("")}
+              </select>
+            </label>
+
+            <div id="resultChallengeDetails" class="result-challenge-box">
+              <div class="result-empty-state"><strong>${noChallenges ? "NO ACCEPTED CHALLENGE" : "SELECT A CHALLENGE"}</strong><span>${noChallenges ? "Accept a Practice Challenge first, then return here." : "The selected challenge details will appear here."}</span></div>
+            </div>
+
+            <label class="result-format-select">RESULT FORMAT *
+              <select id="resultFormat" ${noChallenges ? "disabled" : "required"}>
+                <option value="">Select result format</option>
+                <option value="SOLO">SOLO</option>
+                <option value="DUO">DUO</option>
+                <option value="SQUAD">SQUAD</option>
+              </select>
+              <span class="result-format-note">The result format must match the selected accepted challenge. Points are kept separately for SOLO, DUO and SQUAD rankings.</span>
+            </label>
+
+            <div class="field-grid">
+              <label>WINNER TEAM *<select id="resultWinnerTeam" required><option value="">Select winner team</option></select></label>
+              <label>LOSER TEAM *<select id="resultLoserTeam" required><option value="">Select loser team</option></select></label>
+              <label class="full">FINAL SCORE *<input id="resultScore" maxlength="15" inputmode="numeric" placeholder="Example: 7-1" required></label>
+            </div>
+
+            <div class="result-score-preview" id="resultScorePreview"><span>FINAL SCORE</span><strong>—</strong></div>
+
+            <div class="proof-grid">
+              <label>SCREENSHOT 1 — ACCEPTED CHALLENGE *
+                <input id="resultChallengeProof" type="file" accept="image/png,image/jpeg,image/webp" required>
+                <span class="hint">Proof that this was the challenge accepted for the match.</span>
+              </label>
+              <label>SCREENSHOT 2 — MATCH RESULT *
+                <input id="resultMatchProof" type="file" accept="image/png,image/jpeg,image/webp" required>
+                <span class="hint">Proof of the final match result / score.</span>
+              </label>
+            </div>
+
+            <div class="result-policy"><b>POINT RULE:</b> Pending results do not change rankings. After Admin approval, the Winner receives <strong>+3</strong> and the Loser receives <strong>−3</strong> in the selected format only.</div>
+
+            <div class="auth-actions" style="justify-content:flex-start"><button class="btn btn-primary" type="submit" ${noChallenges ? "disabled" : ""}>SUBMIT RESULT FOR REVIEW</button></div>
+          </form>
         </section>
-        <section class="member-grid" style="margin-top:14px"><div class="panel"><div class="panel-head"><div><div class="kicker">MY RECORDS</div><h3>MY SUBMISSIONS</h3></div></div><div class="feed-list">${mine.map(resultCard).join("") || `<div class="empty">No results submitted yet.</div>`}</div></div><div class="panel"><div class="panel-head"><div><div class="kicker">VERIFIED</div><h3>RECENT APPROVED RESULTS</h3></div></div><div class="feed-list">${verified.slice(0, 10).map(resultCard).join("") || `<div class="empty">No approved results yet.</div>`}</div></div></section>
+
+        <section class="member-grid" style="margin-top:14px">
+          <div class="panel"><div class="panel-head"><div><div class="kicker">MY RECORDS</div><h3>MY SUBMISSIONS</h3></div></div><div class="feed-list">${mine.map(resultCard).join("") || `<div class="empty">No results submitted yet.</div>`}</div></div>
+          <div class="panel"><div class="panel-head"><div><div class="kicker">VERIFIED</div><h3>RECENT APPROVED RESULTS</h3></div></div><div class="feed-list">${verified.slice(0, 10).map(resultCard).join("") || `<div class="empty">No approved results yet.</div>`}</div></div>
+        </section>
       </div>`;
   }
 
-  function bindResults() {
+  function bindResults(challenges = []) {
     document.getElementById("resultForm")?.addEventListener("submit", submitResult);
+
+    const challengeSelect = document.getElementById("resultChallenge");
+    const winner = document.getElementById("resultWinnerTeam");
+    const loser = document.getElementById("resultLoserTeam");
+    const score = document.getElementById("resultScore");
+    const resultFormat = document.getElementById("resultFormat");
+    const preview = document.getElementById("resultScorePreview");
+
+    challengeSelect?.addEventListener("change", () => {
+      renderResultChallengeDetails(challengeById(challenges, challengeSelect.value));
+    });
+
+    resultFormat?.addEventListener("change", () => {
+      const selected = challengeById(challenges, challengeSelect?.value || "");
+      if (!selected) return;
+      const expected = String(selected.format || "").toUpperCase();
+      if (resultFormat.value !== expected) {
+        resultFormat.value = expected;
+        showToast(`Result format must match the selected challenge: ${expected}.`, "error");
+      }
+    });
+
+    const syncPreview = () => {
+      const clean = String(score?.value || "").replace(/\s+/g, "").replace(/[^0-9-]/g, "");
+      if (preview) preview.innerHTML = `<span>FINAL SCORE</span><strong>${esc(clean || "—")}</strong>`;
+    };
+    score?.addEventListener("input", syncPreview);
+    winner?.addEventListener("change", () => {
+      if (winner.value && loser.value === winner.value) loser.value = "";
+    });
+    loser?.addEventListener("change", () => {
+      if (loser.value && winner.value === loser.value) winner.value = "";
+    });
   }
 
   async function submitResult(event) {
     event.preventDefault();
     try {
-      if (!state.team) throw new Error("Approved team membership is required.");
-      const proof = document.getElementById("resultProof")?.files?.[0] || null;
-      if (proof && (proof.size > MAX_IMAGE_MB * 1024 * 1024 || !/^image\/(png|jpeg|webp)$/.test(proof.type))) {
-        throw new Error(`Proof image must be PNG/JPG/WEBP and ${MAX_IMAGE_MB} MB or smaller.`);
-      }
-      const played = new Date(document.getElementById("resultPlayedAt")?.value || "");
-      if (Number.isNaN(played.getTime())) throw new Error("Choose a valid played-at time.");
+      const team = state.team || await ensureApprovedTeam();
+      const challengeId = document.getElementById("resultChallenge")?.value || "";
+      const winnerTeamId = document.getElementById("resultWinnerTeam")?.value || "";
+      const loserTeamId = document.getElementById("resultLoserTeam")?.value || "";
+      const resultFormat = String(document.getElementById("resultFormat")?.value || "").toUpperCase();
+      const scoreValue = document.getElementById("resultScore")?.value.trim() || "";
+      const challengeProof = document.getElementById("resultChallengeProof")?.files?.[0] || null;
+      const matchProof = document.getElementById("resultMatchProof")?.files?.[0] || null;
 
-      let proofUrl = null;
-      if (proof) proofUrl = await uploadFile(RESULT_BUCKET, state.user.id, proof);
+      if (!challengeId) throw new Error("Select the accepted practice challenge first.");
+      const selectedChallenge = (await getMyResultChallenges()).find((item) => item.id === challengeId) || null;
+      if (!selectedChallenge) throw new Error("The selected challenge is no longer available for result submission.");
+      const expectedFormat = String(selectedChallenge.format || "").toUpperCase();
+      if (!["SOLO","DUO","SQUAD"].includes(resultFormat)) throw new Error("Select SOLO, DUO or SQUAD result format.");
+      if (resultFormat !== expectedFormat) throw new Error(`Result format must match the accepted challenge: ${expectedFormat}.`);
+      if (!winnerTeamId || !loserTeamId) throw new Error("Select both Winner Team and Loser Team.");
+      if (winnerTeamId === loserTeamId) throw new Error("Winner and Loser must be different teams.");
+      if (winnerTeamId !== team.id && loserTeamId !== team.id) throw new Error("Your team must be either the Winner or the Loser of the selected challenge.");
+      if (!/^\d{1,3}\s*-\s*\d{1,3}$/.test(scoreValue)) throw new Error("Enter the final score in this format: 7-1");
+
+      const [winnerScore, loserScore] = scoreValue.split("-").map((value) => Number(value.trim()));
+      if (!Number.isFinite(winnerScore) || !Number.isFinite(loserScore) || winnerScore <= loserScore) {
+        throw new Error("The final score must show a higher score for the Winner, for example 7-1.");
+      }
+
+      for (const [label, file] of [["Screenshot 1", challengeProof], ["Screenshot 2", matchProof]]) {
+        if (!file) throw new Error(`${label} is required.`);
+        if (file.size > MAX_IMAGE_MB * 1024 * 1024 || !/^image\/(png|jpeg|webp)$/.test(file.type)) {
+          throw new Error(`${label} must be PNG/JPG/WEBP and ${MAX_IMAGE_MB} MB or smaller.`);
+        }
+      }
+
+      const stamp = Date.now();
+      const challengeExt = challengeProof.type === "image/webp" ? "webp" : challengeProof.type === "image/png" ? "png" : "jpg";
+      const resultExt = matchProof.type === "image/webp" ? "webp" : matchProof.type === "image/png" ? "png" : "jpg";
+      const challengeFile = new File([await challengeProof.arrayBuffer()], `challenge-proof-${stamp}.${challengeExt}`, {type: challengeProof.type});
+      const resultFile = new File([await matchProof.arrayBuffer()], `result-proof-${stamp}.${resultExt}`, {type: matchProof.type});
+      const challengeProofUrl = await uploadFile(RESULT_BUCKET, state.user.id, challengeFile);
+      const resultProofUrl = await uploadFile(RESULT_BUCKET, state.user.id, resultFile);
 
       const { error } = await supabase.rpc("submit_team_result", {
-        p_team_id: state.team.id,
-        p_opponent_team_name: document.getElementById("resultOpponent")?.value.trim(),
-        p_opponent_team_uid: document.getElementById("resultOpponentUid")?.value.trim() || null,
-        p_match_type: document.getElementById("resultMatchType")?.value,
-        p_format: document.getElementById("resultFormat")?.value,
-        p_outcome: document.getElementById("resultOutcome")?.value,
-        p_played_at: played.toISOString(),
-        p_proof_url: proofUrl,
-        p_notes: document.getElementById("resultNotes")?.value.trim() || null
+        p_team_id: team.id,
+        p_challenge_id: challengeId,
+        p_format: resultFormat,
+        p_winner_team_id: winnerTeamId,
+        p_loser_team_id: loserTeamId,
+        p_score: scoreValue,
+        p_proof_challenge_url: challengeProofUrl,
+        p_proof_result_url: resultProofUrl
       });
       if (error) throw error;
-      showToast("Result submitted. Status: PENDING ADMIN REVIEW.");
+
+      showToast("Result submitted successfully. Waiting for Admin approval.");
       await loadMemberSection();
     } catch (error) {
       console.error(error);
@@ -911,8 +1053,23 @@
   /* ========================= RANKINGS ========================= */
 
   async function rankingsPage() {
-    const rankings = await getRankings();
-    return `<div class="container"><div style="margin-bottom:16px"><div class="kicker">PERMANENT LEADERBOARD</div><h1 class="title">ALL-TIME RANKINGS</h1><div class="desc">Rankings never reset. Only administrator-approved results affect points.</div></div><section class="panel"><div class="table-shell"><table><thead><tr><th>Rank</th><th>Team</th><th>Points</th><th>Matches</th><th>Wins</th><th>Losses</th><th>Win Rate</th></tr></thead><tbody>${rankings.map((row) => `<tr><td><strong>#${esc(row.rank_number)}</strong></td><td><div class="identity">${logo(row.logo_url, row.team_name, "mini-logo")}<div><strong>${esc(row.team_name)}</strong><div style="color:#5a738b;margin-top:2px">IGL: ${esc(row.igl_name || "—")}</div></div></div></td><td><span class="badge badge-blue">${esc(row.total_points)}</span></td><td>${esc(row.matches)}</td><td>${esc(row.wins)}</td><td>${esc(row.losses)}</td><td>${esc(row.win_rate)}%</td></tr>`).join("") || `<tr><td colspan="7">No active teams yet.</td></tr>`}</tbody></table></div></section></div>`;
+    const format = String(state.rankFormat || "ALL").toUpperCase();
+    const rankings = await getRankings(format);
+    const labels = {SOLO: "SOLO", DUO: "DUO", SQUAD: "SQUAD", ALL: "ALL FORMATS"};
+    return `<div class="container"><div style="margin-bottom:16px"><div class="kicker">PERMANENT LEADERBOARD</div><h1 class="title">${esc(labels[format] || "RANKINGS")} RANKINGS</h1><div class="desc">Each format has its own permanent point pool. An approved SOLO result changes only SOLO points; DUO and SQUAD remain separate.</div></div>
+      <div class="ranking-format-grid" role="tablist" aria-label="Ranking formats">
+        ${["SOLO","DUO","SQUAD","ALL"].map((item) => `<button class="ranking-format-btn ${item === format ? "active" : ""}" type="button" data-ranking-format="${item}"><strong>${item === "ALL" ? "ALL" : item}</strong><span>${item === "ALL" ? "COMBINED VIEW" : `${item} ONLY`}</span></button>`).join("")}
+      </div>
+      <section class="panel"><div class="panel-head"><div><div class="kicker">${esc(labels[format] || "RANKING")}</div><h3>${esc(labels[format] || "RANKING")} LEADERBOARD</h3></div><span class="badge badge-blue">NEVER RESET</span></div><div class="table-shell"><table><thead><tr><th>Rank</th><th>Team</th><th>Points</th><th>Matches</th><th>Wins</th><th>Losses</th><th>Win Rate</th></tr></thead><tbody>${rankings.map((row) => `<tr><td><strong>#${esc(row.rank_number)}</strong></td><td><div class="identity">${logo(row.logo_url, row.team_name, "mini-logo")}<div><strong>${esc(row.team_name)}</strong><div style="color:#5a738b;margin-top:2px">IGL: ${esc(row.igl_name || "—")}</div></div></div></td><td><span class="badge badge-blue">${esc(row.total_points)}</span></td><td>${esc(row.matches)}</td><td>${esc(row.wins)}</td><td>${esc(row.losses)}</td><td>${esc(row.win_rate)}%</td></tr>`).join("") || `<tr><td colspan="7">No active teams yet.</td></tr>`}</tbody></table></div></section></div>`;
+  }
+
+  function bindRankings() {
+    document.querySelectorAll("[data-ranking-format]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.rankFormat = String(button.dataset.rankingFormat || "ALL").toUpperCase();
+        loadMemberSection();
+      });
+    });
   }
 
   /* ========================= RECRUITMENT ========================= */
@@ -945,8 +1102,9 @@
       let roles = [];
       let ign = null;
       let uid = null;
+      let team = null;
       if (type === "TEAM_RECRUITMENT") {
-        if (!state.team) throw new Error("Approved team membership is required.");
+        team = state.team || await ensureApprovedTeam();
         roles = [...(document.getElementById("recruitLookingFor")?.selectedOptions || [])].map((o) => o.value);
         if (!roles.length) throw new Error("Select at least one role.");
       } else {
@@ -957,9 +1115,9 @@
       }
 
       const { error } = await supabase.rpc("create_recruitment_post", {
-        p_team_id: state.team?.id || null,
-        p_team_name: state.team?.name || ign,
-        p_team_logo_url: state.team?.logo_url || null,
+        p_team_id: team?.id || null,
+        p_team_name: team?.name || ign,
+        p_team_logo_url: team?.logo_url || null,
         p_listing_type: type,
         p_looking_for: roles,
         p_players_needed: type === "TEAM_RECRUITMENT" ? Number(document.getElementById("recruitPlayersNeeded")?.value || 1) : 1,
@@ -995,14 +1153,16 @@
   async function saveTeamProfile(event) {
     event.preventDefault();
     try {
+      const team = state.team || await ensureApprovedTeam();
+      state.team = team;
       const canEditTeam = state.isAdmin || state.profile?.role === "leader";
       const memberName = document.getElementById("profileMemberName")?.value.trim() || "";
       const phone = cleanPhone(document.getElementById("profilePhone")?.value || "");
       if (phone && !/^\+92\d{10}$/.test(phone)) throw new Error("Enter a valid Pakistan contact number.");
 
-      let teamName = state.team.name;
-      let igl = state.team.igl_name || "";
-      let logoUrl = state.team.logo_url || null;
+      let teamName = team.name;
+      let igl = team.igl_name || "";
+      let logoUrl = team.logo_url || null;
 
       if (canEditTeam) {
         teamName = document.getElementById("profileTeamName")?.value.trim() || "";
@@ -1018,7 +1178,7 @@
       }
 
       const { error } = await supabase.rpc("update_team_profile", {
-        p_team_id: state.team.id,
+        p_team_id: team.id,
         p_team_name: teamName,
         p_igl_name: igl,
         p_logo_url: logoUrl,
@@ -1041,14 +1201,15 @@
   /* ========================= MY POSTS ========================= */
 
   async function myPostsPage() {
-    if (!state.team) return `<div class="container"><div class="empty">No team attached.</div></div>`;
+    const team = state.team || await ensureApprovedTeam();
+    state.team = team;
     const [challenges, posts] = await Promise.all([
-      supabase.from("practice_challenges").select("*").eq("team_id", state.team.id).order("created_at", { ascending: false }),
-      supabase.from("recruitment_posts").select("*").eq("team_id", state.team.id).order("created_at", { ascending: false })
+      supabase.from("practice_challenges").select("*").eq("team_id", team.id).order("created_at", { ascending: false }),
+      supabase.from("recruitment_posts").select("*").eq("team_id", team.id).order("created_at", { ascending: false })
     ]);
     if (challenges.error) throw challenges.error;
     if (posts.error) throw posts.error;
-    return `<div class="container"><div style="margin-bottom:16px"><div class="kicker">TEAM ACTIVITY</div><h1 class="title">MY POSTS</h1><div class="desc">${esc(state.team.name)}</div></div><section class="member-grid"><div class="panel"><div class="panel-head"><div><div class="kicker">PRACTICE</div><h3>MY CHALLENGES</h3></div></div><div class="feed-list">${(challenges.data || []).map(challengeCard).join("") || `<div class="empty">No practice posts.</div>`}</div></div><div class="panel"><div class="panel-head"><div><div class="kicker">RECRUITMENT</div><h3>MY RECRUITMENT</h3></div></div><div class="feed-list">${(posts.data || []).map(recruitmentCard).join("") || `<div class="empty">No recruitment posts.</div>`}</div></div></section></div>`;
+    return `<div class="container"><div style="margin-bottom:16px"><div class="kicker">TEAM ACTIVITY</div><h1 class="title">MY POSTS</h1><div class="desc">${esc(team.name)}</div></div><section class="member-grid"><div class="panel"><div class="panel-head"><div><div class="kicker">PRACTICE</div><h3>MY CHALLENGES</h3></div></div><div class="feed-list">${(challenges.data || []).map(challengeCard).join("") || `<div class="empty">No practice posts.</div>`}</div></div><div class="panel"><div class="panel-head"><div><div class="kicker">RECRUITMENT</div><h3>MY RECRUITMENT</h3></div></div><div class="feed-list">${(posts.data || []).map(recruitmentCard).join("") || `<div class="empty">No recruitment posts.</div>`}</div></div></section></div>`;
   }
 
   /* ========================= ADMIN CENTER ========================= */
@@ -1103,8 +1264,12 @@
   }
 
   function adminResultsContent() {
-    const teamName = (id) => state.teams.find((team) => team.id === id)?.name || id;
-    return `<div class="panel"><div class="panel-head"><div><div class="kicker">VERIFY</div><h3>MATCH RESULTS</h3><div class="subtle">Only approved results affect the permanent ranking.</div></div><span class="badge badge-blue">WIN +3 • LOSS −3</span></div><div class="table-shell"><table><thead><tr><th>Team</th><th>Opponent</th><th>Outcome</th><th>Points</th><th>Played</th><th>Status</th><th>Control</th></tr></thead><tbody>${state.results.map((row) => `<tr><td><strong>${esc(teamName(row.team_id))}</strong></td><td>${esc(row.opponent_team_name)}</td><td>${esc(row.outcome)}</td><td><strong>${row.outcome === "WIN" ? "+3" : "−3"}</strong></td><td>${esc(formatDate(row.played_at))}</td><td>${esc(row.status)}</td><td>${row.proof_url ? `<button class="btn btn-dark btn-small" data-proof="${esc(row.proof_url)}">VIEW PROOF</button> ` : ""}${row.status === "pending" ? `<button class="btn btn-green btn-small" data-review="${esc(row.id)}" data-next="approved">APPROVE</button> <button class="btn btn-danger btn-small" data-review="${esc(row.id)}" data-next="rejected">REJECT</button>` : "—"}</td></tr>`).join("") || `<tr><td colspan="7">No results.</td></tr>`}</tbody></table></div></div>`;
+    const teamName = (id) => state.teams.find((team) => team.id === id)?.name || id || "—";
+    return `<div class="panel"><div class="panel-head"><div><div class="kicker">VERIFY</div><h3>MATCH RESULTS</h3><div class="subtle">Admin approval activates +3 for the Winner and −3 for the Loser in permanent rankings.</div></div><span class="badge badge-blue">WIN +3 • LOSS −3</span></div><div class="table-shell"><table><thead><tr><th>Challenge</th><th>Winner</th><th>Loser</th><th>Score</th><th>Proof</th><th>Status</th><th>Control</th></tr></thead><tbody>${state.results.map((row) => {
+      const winner = row.winner_team_name || (row.outcome === "WIN" ? teamName(row.team_id) : row.opponent_team_name) || "—";
+      const loser = row.loser_team_name || (row.outcome === "LOSS" ? teamName(row.team_id) : row.opponent_team_name) || "—";
+      return `<tr><td>${esc(row.challenge_id ? `${row.match_type || "MATCH"} • ${row.format || "—"}` : "Legacy result")}</td><td><strong>${esc(winner)}</strong></td><td><strong>${esc(loser)}</strong></td><td><span class="badge badge-cyan">${esc(row.score || "—")}</span></td><td>${row.proof_challenge_url ? `<button class="btn btn-dark btn-small" data-proof="${esc(row.proof_challenge_url)}" data-proof-title="CHALLENGE PROOF">S1</button> ` : ""}${row.proof_result_url || row.proof_url ? `<button class="btn btn-dark btn-small" data-proof="${esc(row.proof_result_url || row.proof_url)}" data-proof-title="RESULT PROOF">S2</button>` : "—"}</td><td>${esc(row.status)}</td><td>${row.status === "pending" ? `<button class="btn btn-green btn-small" data-review="${esc(row.id)}" data-next="approved">APPROVE</button> <button class="btn btn-danger btn-small" data-review="${esc(row.id)}" data-next="rejected">REJECT</button>` : "—"}</td></tr>`;
+    }).join("") || `<tr><td colspan="7">No results.</td></tr>`}</tbody></table></div></div>`;
   }
 
   function adminPracticeContent() {
@@ -1311,7 +1476,25 @@
     }));
 
     document.querySelectorAll("[data-proof]").forEach((button) => button.addEventListener("click", () => {
-      showModal("RESULT PROOF", `<img src="${esc(button.dataset.proof)}" alt="Result proof" style="width:100%;max-height:70vh;object-fit:contain;border-radius:12px;border:1px solid rgba(64,168,255,.18);background:#02060b">`);
+      showModal(button.dataset.proofTitle || "RESULT PROOF", `<img src="${esc(button.dataset.proof)}" alt="Result proof" style="width:100%;max-height:70vh;object-fit:contain;border-radius:12px;border:1px solid rgba(64,168,255,.18);background:#02060b">`);
+    }));
+
+    document.querySelectorAll("[data-accept-challenge]").forEach((button) => button.addEventListener("click", async () => {
+      const id = button.dataset.acceptChallenge;
+      if (!id) return;
+      button.disabled = true;
+      button.textContent = "ACCEPTING...";
+      try {
+        const { error } = await supabase.rpc("accept_practice_challenge", { p_challenge_id: id });
+        if (error) throw error;
+        showToast("Challenge accepted. You can submit the final result after the match.");
+        await loadMemberSection();
+      } catch (error) {
+        console.error(error);
+        button.disabled = false;
+        button.textContent = "ACCEPT CHALLENGE";
+        showToast(friendlyError(error, "Could not accept challenge."), "error");
+      }
     }));
 
     document.querySelectorAll("[data-json]").forEach((button) => button.addEventListener("click", () => {
