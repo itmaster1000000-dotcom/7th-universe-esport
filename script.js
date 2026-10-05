@@ -1,5 +1,5 @@
 /*
-  7TH UNIVERSE ESPORTS — FINAL TEAM CONTEXT FIX
+  7TH UNIVERSE ESPORTS — PRODUCTION REVIEW BUILD v20
   Simple frontend: index.html + script.js + logo only.
   Backend: Supabase Auth/DB/Storage + Railway/Baileys bridge.
 
@@ -53,7 +53,9 @@
     rankings: [],
     rankFormat: "ALL",
     registrations: [],
-    teams: []
+    teams: [],
+    adminPoints: [],
+    teamDetails: null
   };
 
   const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (m) => ({
@@ -79,6 +81,70 @@
       ? "—"
       : d.toLocaleString("en-PK", { dateStyle: "medium", timeStyle: "short" });
   };
+
+
+  function formatTimeOnly(value) {
+    if (!value) return "—";
+    const raw = String(value).trim();
+    if (/^\d{1,2}:\d{2}\s*[AP]M$/i.test(raw)) return raw.replace(/\s+/g, "").toUpperCase();
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return raw;
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Karachi",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true
+      }).format(d).replace(/\s+/g, "").toUpperCase();
+    } catch (_) {
+      return raw;
+    }
+  }
+
+  function pakistanDateParts() {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Karachi",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).formatToParts(new Date());
+    const get = (type) => parts.find((p) => p.type === type)?.value || "";
+    return { year: get("year"), month: get("month"), day: get("day"), hour: Number(get("hour")), minute: Number(get("minute")) };
+  }
+
+  function nextPakistanDateForTime(hhmm) {
+    const now = pakistanDateParts();
+    const [hh, mm] = String(hhmm || "").split(":").map(Number);
+    if (!Number.isInteger(hh) || !Number.isInteger(mm)) throw new Error("Choose a valid match time.");
+    const targetMinutes = hh * 60 + mm;
+    const nowMinutes = now.hour * 60 + now.minute;
+    let dateText = `${now.year}-${now.month}-${now.day}`;
+    if (targetMinutes <= nowMinutes) {
+      const base = new Date(`${dateText}T12:00:00+05:00`);
+      base.setUTCDate(base.getUTCDate() + 1);
+      const out = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Karachi", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(base);
+      const get = (type) => out.find((p) => p.type === type)?.value || "";
+      dateText = `${get("year")}-${get("month")}-${get("day")}`;
+    }
+    return `${dateText}T${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}:00+05:00`;
+  }
+
+  function time12Parts(hhmm) {
+    const [h, m] = String(hhmm || "").split(":").map(Number);
+    const period = h >= 12 ? "PM" : "AM";
+    let hour = h % 12;
+    if (hour === 0) hour = 12;
+    return { hour: String(hour).padStart(2,"0"), minute: String(m).padStart(2,"0"), period };
+  }
+
+  function time24FromParts(hour12, minute, period) {
+    let h = Number(hour12) % 12;
+    if (String(period).toUpperCase() === "PM") h += 12;
+    return `${String(h).padStart(2,"0")}:${String(Number(minute)).padStart(2,"0")}`;
+  }
 
   const roleName = (role) => ({
     admin: "Administrator",
@@ -123,7 +189,7 @@
     const code = String(error?.code || "");
 
     if (code === "42501" || /permission denied|not permitted|administrator access required/i.test(message)) {
-      return "Database denied this action. Run the latest ESPORTS SQL Parts 1–15 and make sure your admin profile is role=admin and status=approved.";
+      return "Database denied this action. Run the latest ESPORTS SQL Parts 1–18 and make sure your admin profile is role=admin and status=approved.";
     }
     if (code === "23505" || /duplicate key|already exists/i.test(message)) {
       return "This value already exists. Check the team name, email, or selected role.";
@@ -134,7 +200,16 @@
     if (code === "23503" || /foreign key/i.test(message)) {
       return "A related team/member record is missing. Run the latest ESPORTS SQL parts in order.";
     }
-    if (/Invalid login credentials/i.test(message)) return "Email/phone or password is incorrect.";
+    if (/No removed registration found|No eligible previous registration/i.test(message)) {
+      return "This email already has an account, but no removable/rejected registration is available. Use LOGIN or contact the administrator.";
+    }
+    if (/previous team.*removed|registration.*removed.*register again/i.test(message)) {
+      return "Your previous team was permanently removed. Please submit a new team registration.";
+    }
+    if (/team name.*already|another team already uses this name/i.test(message)) {
+      return "That team name is already in use. Choose another team name.";
+    }
+    if (/Invalid login credentials/i.test(message)) return "Email or password is incorrect.";
     if (/Email not confirmed/i.test(message)) return "Please confirm your email first, then login again.";
     return message || fallback;
   }
@@ -217,7 +292,7 @@
         await supabase.auth.signOut();
         state.screen = "login";
         render();
-        showToast("Registration record not found. Contact the administrator.", "error");
+        showToast("Your previous team registration was removed. Please submit a new team registration.", "error");
         return;
       }
 
@@ -228,10 +303,14 @@
         await supabase.auth.signOut();
         state.screen = "login";
         render();
-        showToast(
-          currentStatus === "banned" ? "Your account is banned." : "Your registration is pending administrator approval.",
-          "error"
-        );
+        const statusMessage = currentStatus === "banned"
+          ? "Your account is banned."
+          : currentStatus === "rejected"
+            ? "Your registration was rejected. Open NEW TEAM REGISTRATION to submit it again."
+            : currentStatus === "removed"
+              ? "Your previous team membership was removed. Open NEW TEAM REGISTRATION to register again."
+              : "Your registration is pending administrator approval.";
+        showToast(statusMessage, "error");
         return;
       }
 
@@ -326,11 +405,11 @@
       <div class="auth-title">
         <div class="kicker">AUTHORIZED MEMBERS</div>
         <h1 class="title">LOGIN</h1>
-        <p>Use your registered email or mobile number and password.</p>
+        <p>Use your registered email and password.</p>
       </div>
       <form id="loginForm" style="margin-top:16px">
         <div class="field-grid">
-          <label class="full">EMAIL / MOBILE NUMBER *<input id="loginIdentifier" autocomplete="username" placeholder="leader@example.com or 03XXXXXXXXX" required></label>
+          <label class="full">EMAIL *<input id="loginIdentifier" type="email" autocomplete="username" placeholder="leader@example.com" required></label>
           <label class="full">PASSWORD *<input id="loginPassword" type="password" autocomplete="current-password" placeholder="Your password" required></label>
         </div>
         <div class="auth-actions">
@@ -357,10 +436,10 @@
           <label class="full">EMAIL *<input id="regEmail" type="email" maxlength="120" placeholder="leader@example.com" required></label>
           <label>PASSWORD *<input id="regPassword" type="password" minlength="8" placeholder="Minimum 8 characters" required></label>
           <label>CONFIRM PASSWORD *<input id="regPassword2" type="password" minlength="8" placeholder="Repeat password" required></label>
-          <label class="full">TEAM LOGO — OPTIONAL<input id="regLogo" type="file" accept="image/png,image/jpeg,image/webp"></label>
+          
         </div>
-        <div class="hint">Logo can be uploaded later from TEAM PROFILE after approval. PNG/JPG/WEBP • Maximum ${MAX_IMAGE_MB} MB.</div>
-        <div class="access-note" style="margin-top:13px"><b>IMPORTANT:</b> Email confirmation may be required by Supabase. Your registration record is created server-side even when no session is returned.</div>
+        <div class="hint">Team logo can be uploaded later from TEAM PROFILE after approval.</div>
+        <div class="access-note" style="margin-top:13px"><b>IMPORTANT:</b> Team approval is required before login. A permanently removed team can register again using the same email after signing in during re-registration.</div>
         <div class="auth-actions">
           <button class="btn btn-primary" type="submit">SUBMIT REGISTRATION</button>
           <button class="btn btn-secondary" id="registerBackBtn" type="button">BACK TO LOGIN</button>
@@ -402,9 +481,8 @@
 
     try {
       if (!id || !password) throw new Error("Enter your login details.");
-      const credentials = id.includes("@")
-        ? { email: id.toLowerCase(), password }
-        : { phone: cleanPhone(id), password };
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(id)) throw new Error("Enter a valid email address.");
+      const credentials = { email: id.toLowerCase(), password };
       const { error } = await supabase.auth.signInWithPassword(credentials);
       if (error) throw error;
       await hydrateSession();
@@ -423,7 +501,6 @@
     const email = (document.getElementById("regEmail")?.value.trim() || "").toLowerCase();
     const password = document.getElementById("regPassword")?.value || "";
     const password2 = document.getElementById("regPassword2")?.value || "";
-    const file = document.getElementById("regLogo")?.files?.[0] || null;
 
     try {
       if (!teamName || !name || !email || !phone) throw new Error("Complete all required fields.");
@@ -431,13 +508,7 @@
       if (!['leader', 'sub_leader'].includes(role)) throw new Error("Invalid website member role.");
       if (password.length < 8) throw new Error("Password must be at least 8 characters.");
       if (password !== password2) throw new Error("Passwords do not match.");
-      if (file && (file.size > MAX_IMAGE_MB * 1024 * 1024 || !/^image\/(png|jpeg|webp)$/.test(file.type))) {
-        throw new Error(`Logo must be PNG/JPG/WEBP and ${MAX_IMAGE_MB} MB or smaller.`);
-      }
 
-      // Do NOT upload the logo during signup. When email confirmation is enabled,
-      // Supabase can return a user with no active session, so the browser cannot
-      // safely upload to an authenticated storage path yet. Upload it later from Team Profile.
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -451,14 +522,49 @@
         }
       });
 
-      if (error) throw error;
-      if (!data?.user) throw new Error("Registration could not be created.");
-      if (data.session) await supabase.auth.signOut();
+      // Normal first-time registration.
+      if (!error && data?.user && (data.user.identities?.length ?? 1) > 0) {
+        if (data.session) await supabase.auth.signOut();
+        goLogin();
+        showToast("Registration submitted. Status: PENDING for administrator approval.");
+        return;
+      }
+
+      // Existing Auth user: this is the path used for a permanently removed
+      // team (and also supports an existing rejected registration via the DB RPC).
+      const duplicateAccount = Boolean(
+        error && /already registered|already exists|user already/i.test(String(error.message || ""))
+      ) || Boolean(data?.user && (data.user.identities?.length ?? 1) === 0);
+
+      if (!duplicateAccount) {
+        if (error) throw error;
+        throw new Error("Registration could not be created.");
+      }
+
+      const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+      if (loginError) {
+        throw new Error("This email already has an account. Enter the correct existing password to submit the registration again.");
+      }
+
+      const { error: reapplyError } = await supabase.rpc("reapply_existing_registration", {
+        p_team_name: teamName,
+        p_display_name: name,
+        p_phone: phone,
+        p_role: role
+      });
+
+      await supabase.auth.signOut();
+
+      if (reapplyError) throw reapplyError;
 
       goLogin();
-      showToast("Registration submitted. Status: PENDING for administrator approval.");
+      showToast("Previous registration was accepted for re-submission. Status: PENDING for administrator approval.");
     } catch (error) {
       console.error(error);
+      try { await supabase.auth.signOut(); } catch (_) {}
       showToast(friendlyError(error, "Registration failed."), "error");
     }
   }
@@ -486,7 +592,7 @@
             <div class="kicker">RESTRICTED CONTROL</div>
             <h1>ADMIN <span style="color:var(--blue2)">CENTER</span></h1>
             <h2>7TH UNIVERSE ESPORTS</h2>
-            <div class="desc">Approve registrations, edit team information, manage members, ban/unban, remove/restore teams, verify results and moderate posts.</div>
+            <div class="desc">Approve registrations, edit team information, manage members, ban/unban, permanently remove teams, verify results and moderate posts.</div>
             <div class="access-note"><b>PRIVATE:</b> Only an approved administrator can enter.</div>
           </section>
           <section class="card auth-card">
@@ -494,7 +600,7 @@
               <div class="auth-logo-row"><img src="./7th-universe-esports-logo.png" alt="7U"><div><strong>ADMIN LOGIN</strong><span>CONTROL CENTER</span></div></div>
               <form id="adminLoginForm">
                 <div class="field-grid">
-                  <label class="full">ADMIN EMAIL / MOBILE *<input id="adminId" autocomplete="username" required></label>
+                  <label class="full">ADMIN EMAIL *<input id="adminId" type="email" autocomplete="username" placeholder="admin@example.com" required></label>
                   <label class="full">PASSWORD *<input id="adminPw" type="password" autocomplete="current-password" required></label>
                 </div>
                 <div class="auth-actions"><button class="btn btn-primary" type="submit">LOGIN AS ADMIN</button><button class="btn btn-dark" type="button" id="adminBack">BACK</button></div>
@@ -514,9 +620,8 @@
     const password = document.getElementById("adminPw")?.value || "";
 
     try {
-      const credentials = id.includes("@")
-        ? { email: id.toLowerCase(), password }
-        : { phone: cleanPhone(id), password };
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(id)) throw new Error("Enter a valid admin email address.");
+      const credentials = { email: id.toLowerCase(), password };
       const { data, error } = await supabase.auth.signInWithPassword(credentials);
       if (error) throw error;
 
@@ -696,7 +801,7 @@
           <span class="badge ${accepted ? "badge-cyan" : "badge-green"}">${accepted ? "ACCEPTED" : "OPEN"}</span>
         </div>
         <div class="pills"><span class="pill">${esc(challenge.match_type)}</span><span class="pill">${esc(challenge.format)}</span><span class="pill">EVERYONE</span></div>
-        <div class="info-row"><div class="info-box"><small>Match Time</small><strong>${esc(formatDate(challenge.match_time))}</strong></div><div class="info-box"><small>Contact</small><strong>${esc(challenge.contact || "—")}</strong></div></div>
+        <div class="info-row"><div class="info-box"><small>Match Time</small><strong>${esc(formatTimeOnly(challenge.match_time))}</strong></div><div class="info-box"><small>Contact</small><strong>${esc(challenge.contact || "—")}</strong></div></div>
         ${challenge.notes ? `<div class="note">${esc(challenge.notes)}</div>` : ""}
         ${accepted ? `<div class="note" style="border-color:rgba(45,224,255,.18);color:#9eeaff;background:rgba(45,224,255,.04)"><b>ACCEPTED BY:</b> ${esc(challenge.accepted_by_team_name || "Another Team")}</div>` : ""}
         <div class="card-actions">
@@ -737,11 +842,17 @@
         <div style="margin-bottom:16px"><div class="kicker">LIVE ARENA</div><h1 class="title">CLASH SQUAD PRACTICE</h1><div class="desc">Post a practice challenge for <b>EVERYONE</b>. There is intentionally no opponent-team field.</div></div>
         <section class="panel form-card">
           <div class="panel-head"><div><div class="kicker">CREATE</div><h3>PRACTICE CHALLENGE</h3></div><span class="badge badge-blue">EVERYONE</span></div>
-          <div class="form-tip">FREE FIRE • CLASH SQUAD • EVERYONE • SINGLE / BEST OF 3 • SOLO / DUO / SQUAD</div>
+          <div class="form-tip">FREE FIRE • CLASH SQUAD • EVERYONE • SINGLE / BEST OF 3 • SOLO / DUO / SQUAD • MATCH TIME ONLY</div>
           <form id="practiceForm"><div class="field-grid">
             <label>MATCH TYPE *<select id="practiceMatchType"><option value="SINGLE">SINGLE MATCH</option><option value="BEST OF 3">BEST OF 3</option></select></label>
             <label>FORMAT *<select id="practiceFormat"><option value="SQUAD">SQUAD</option><option value="DUO">DUO</option><option value="SOLO">SOLO</option></select></label>
-            <label>MATCH TIME *<input id="practiceTime" type="datetime-local" required></label>
+            <label>MATCH TIME *
+              <button class="time-picker-button" id="practiceTimeBtn" type="button" aria-haspopup="dialog" aria-controls="modalBackdrop">
+                <span><span class="time-value" id="practiceTimeDisplay">SELECT TIME</span><span class="time-hint">PAKISTAN TIME • DATE IS NOT SHOWN</span></span>
+                <span class="time-icon">◷</span>
+              </button>
+              <input id="practiceTime" type="hidden" value="">
+            </label>
             <label>CONTACT / WHATSAPP *<input id="practiceContact" value="${esc(state.profile?.phone || "")}" required placeholder="03XXXXXXXXX"></label>
             <label class="full">ADDITIONAL NOTES<textarea id="practiceNotes" maxlength="500"></textarea></label>
           </div><div class="auth-actions" style="justify-content:flex-start"><button class="btn btn-primary" type="submit">POST OPEN CHALLENGE</button></div></form>
@@ -752,15 +863,73 @@
 
   function bindPractice() {
     document.getElementById("practiceForm")?.addEventListener("submit", submitPractice);
+    document.getElementById("practiceTimeBtn")?.addEventListener("click", openPracticeTimePicker);
+  }
+
+  function openPracticeTimePicker() {
+    const current = document.getElementById("practiceTime")?.value || "12:00";
+    const parts = time12Parts(current);
+    const hours = Array.from({length:12}, (_,i) => String(i + 1).padStart(2,"0"));
+    const minutes = Array.from({length:60}, (_,i) => String(i).padStart(2,"0"));
+    showModal("SET MATCH TIME", `
+      <div class="time-picker-modal">
+        <div class="time-picker-display">
+          <strong id="timePickerPreview">${esc(parts.hour)}:${esc(parts.minute)} ${esc(parts.period)}</strong>
+          <small>PAKISTAN TIME • DATE IS NOT SHOWN</small>
+        </div>
+        <div class="time-picker-grid">
+          <label>HOUR<select id="timePickerHour">${hours.map((h) => `<option value="${h}" ${h === parts.hour ? "selected" : ""}>${h}</option>`).join("")}</select></label>
+          <label>MINUTE<select id="timePickerMinute">${minutes.map((m) => `<option value="${m}" ${m === parts.minute ? "selected" : ""}>${m}</option>`).join("")}</select></label>
+        </div>
+        <div class="time-picker-period">
+          <button type="button" class="time-period-btn ${parts.period === "AM" ? "active" : ""}" data-time-period="AM">AM</button>
+          <button type="button" class="time-period-btn ${parts.period === "PM" ? "active" : ""}" data-time-period="PM">PM</button>
+        </div>
+        <div class="time-picker-actions">
+          <div class="left-actions"><button type="button" class="btn btn-dark" id="timePickerClear">CLEAR</button></div>
+          <div class="right-actions"><button type="button" class="btn btn-dark" id="timePickerCancel">CANCEL</button><button type="button" class="btn btn-primary" id="timePickerSet">SET</button></div>
+        </div>
+      </div>`);
+
+    const preview = document.getElementById("timePickerPreview");
+    let period = parts.period;
+    const refreshPreview = () => {
+      const h = document.getElementById("timePickerHour")?.value || "12";
+      const m = document.getElementById("timePickerMinute")?.value || "00";
+      if (preview) preview.textContent = `${h}:${m} ${period}`;
+    };
+    document.getElementById("timePickerHour")?.addEventListener("change", refreshPreview);
+    document.getElementById("timePickerMinute")?.addEventListener("change", refreshPreview);
+    document.querySelectorAll("[data-time-period]").forEach((button) => button.addEventListener("click", () => {
+      period = button.dataset.timePeriod;
+      document.querySelectorAll("[data-time-period]").forEach((b) => b.classList.toggle("active", b === button));
+      refreshPreview();
+    }));
+    document.getElementById("timePickerClear")?.addEventListener("click", () => {
+      const input = document.getElementById("practiceTime");
+      const display = document.getElementById("practiceTimeDisplay");
+      if (input) input.value = "";
+      if (display) display.textContent = "SELECT TIME";
+      closeModal();
+    });
+    document.getElementById("timePickerCancel")?.addEventListener("click", closeModal);
+    document.getElementById("timePickerSet")?.addEventListener("click", () => {
+      const h = document.getElementById("timePickerHour")?.value || "12";
+      const m = document.getElementById("timePickerMinute")?.value || "00";
+      const value = time24FromParts(h, m, period);
+      document.getElementById("practiceTime").value = value;
+      document.getElementById("practiceTimeDisplay").textContent = `${h}:${m} ${period}`;
+      closeModal();
+    });
   }
 
   async function submitPractice(event) {
     event.preventDefault();
     try {
-      const team = state.team || await ensureApprovedTeam();
-      const raw = document.getElementById("practiceTime")?.value || "";
-      const date = new Date(raw);
-      if (Number.isNaN(date.getTime())) throw new Error("Choose a valid match time.");
+      const team = await ensureApprovedTeam();
+      const selectedTime = document.getElementById("practiceTime")?.value || "";
+      if (!/^\d{2}:\d{2}$/.test(selectedTime)) throw new Error("Please select a match time.");
+      const matchDateTime = nextPakistanDateForTime(selectedTime);
       const contact = cleanPhone(document.getElementById("practiceContact")?.value || "");
       if (!/^\+92\d{10}$/.test(contact)) throw new Error("Enter a valid Pakistan contact number.");
 
@@ -769,7 +938,7 @@
         p_team_name: team.name,
         p_team_logo_url: team.logo_url || null,
         p_match_type: document.getElementById("practiceMatchType")?.value,
-        p_match_time: date.toISOString(),
+        p_match_time: new Date(matchDateTime).toISOString(),
         p_format: document.getElementById("practiceFormat")?.value,
         p_contact: contact,
         p_notes: document.getElementById("practiceNotes")?.value.trim() || null
@@ -834,7 +1003,7 @@
   function challengeOptionLabel(challenge) {
     const posted = challenge.team_name || "Team";
     const accepted = challenge.accepted_by_team_name || "Opponent";
-    return `${posted}  vs  ${accepted} • ${challenge.match_type} • ${challenge.format} • ${formatDate(challenge.match_time)}`;
+    return `${posted}  vs  ${accepted} • ${challenge.match_type} • ${challenge.format} • ${formatTimeOnly(challenge.match_time)}`;
   }
 
   function challengeById(challenges, id) {
@@ -863,7 +1032,7 @@
 
     box.innerHTML = `
       <div class="result-challenge-head"><div><small>SELECTED CHALLENGE</small><strong>${esc(challenge.team_name)} <span>VS</span> ${esc(challenge.accepted_by_team_name || "Opponent")}</strong></div><span class="badge badge-cyan">ACCEPTED</span></div>
-      <div class="result-meta-grid"><div><small>MATCH</small><b>${esc(challenge.match_type)}</b></div><div><small>FORMAT</small><b>${esc(challenge.format)}</b></div><div><small>TIME</small><b>${esc(formatDate(challenge.match_time))}</b></div></div>`;
+      <div class="result-meta-grid"><div><small>MATCH</small><b>${esc(challenge.match_type)}</b></div><div><small>FORMAT</small><b>${esc(challenge.format)}</b></div><div><small>TIME</small><b>${esc(formatTimeOnly(challenge.match_time))}</b></div></div>`;
 
     const resultFormat = document.getElementById("resultFormat");
     if (resultFormat) resultFormat.value = String(challenge.format || "").toUpperCase();
@@ -1212,12 +1381,65 @@
     return `<div class="container"><div style="margin-bottom:16px"><div class="kicker">TEAM ACTIVITY</div><h1 class="title">MY POSTS</h1><div class="desc">${esc(team.name)}</div></div><section class="member-grid"><div class="panel"><div class="panel-head"><div><div class="kicker">PRACTICE</div><h3>MY CHALLENGES</h3></div></div><div class="feed-list">${(challenges.data || []).map(challengeCard).join("") || `<div class="empty">No practice posts.</div>`}</div></div><div class="panel"><div class="panel-head"><div><div class="kicker">RECRUITMENT</div><h3>MY RECRUITMENT</h3></div></div><div class="feed-list">${(posts.data || []).map(recruitmentCard).join("") || `<div class="empty">No recruitment posts.</div>`}</div></div></section></div>`;
   }
 
+  /* ========================= ADMIN POINTS ========================= */
+
+  async function loadAdminPointControls() {
+    const { data, error } = await supabase.rpc("admin_get_team_points");
+    if (error) throw error;
+    state.adminPoints = data || [];
+    return state.adminPoints;
+  }
+
+  function adminPointsContent() {
+    const rows = state.adminPoints || [];
+    return `<div class="panel"><div class="panel-head"><div><div class="kicker">MANUAL CONTROL</div><h3>TEAM POINT MANAGEMENT</h3><div class="subtle">Administrators can increase or decrease SOLO, DUO and SQUAD points without changing verified match history. Positive values add points; negative values subtract points.</div></div><span class="badge badge-blue">ADMIN ONLY</span></div><div class="admin-warning" style="margin-bottom:12px"><b>POINT SAFETY:</b> Verified result points stay untouched. Only the separate Admin Adjustment can be changed here. The total ranking is recalculated automatically.</div><div class="table-shell"><table style="min-width:1120px"><thead><tr><th>Team</th><th>SOLO</th><th>DUO</th><th>SQUAD</th><th>ALL FORMATS</th><th>Control</th></tr></thead><tbody>${rows.map((row) => `<tr><td><div class="identity">${logo(row.logo_url, row.team_name)}<div><strong>${esc(row.team_name)}</strong><div class="meta">IGL: ${esc(row.igl_name || "—")}</div><span class="badge ${row.team_status === "active" ? "badge-green" : row.team_status === "banned" ? "badge-danger" : "badge-warn"}" style="margin-top:5px">${esc(row.team_status || "—")}</span></div></div></td><td><strong>${esc(row.solo_total)}</strong><div class="meta">VERIFIED ${esc(row.solo_verified)} • CARRY ${esc(row.solo_carry)} • ADMIN ${esc(row.solo_adjustment)}</div></td><td><strong>${esc(row.duo_total)}</strong><div class="meta">VERIFIED ${esc(row.duo_verified)} • CARRY ${esc(row.duo_carry)} • ADMIN ${esc(row.duo_adjustment)}</div></td><td><strong>${esc(row.squad_total)}</strong><div class="meta">VERIFIED ${esc(row.squad_verified)} • CARRY ${esc(row.squad_carry)} • ADMIN ${esc(row.squad_adjustment)}</div></td><td><span class="badge badge-cyan">${esc(row.total_points)} PTS</span></td><td><button class="btn btn-primary btn-small" data-edit-points="${esc(row.team_id)}">EDIT POINTS</button></td></tr>`).join("") || `<tr><td colspan="6"><div class="empty">No teams available.</div></td></tr>`}</tbody></table></div></div>`;
+  }
+
+  function openAdminPointsEdit(teamId) {
+    const row = state.adminPoints.find((item) => item.team_id === teamId);
+    if (!row) return showToast("Team points record not found.", "error");
+
+    showModal("EDIT TEAM POINTS", `<form id="adminPointsEditForm"><div class="access-note" style="margin-bottom:12px"><b>${esc(row.team_name)}</b><br>Enter a positive number to ADD points, or a negative number to REMOVE points. Verified results are never edited by this control.</div><div class="field-grid"><label>SOLO ADMIN CHANGE<input id="pointsSoloDelta" type="number" step="1" value="0" placeholder="+5 or -5"><div class="hint">Current Admin Adjustment: ${esc(row.solo_adjustment)}</div></label><label>DUO ADMIN CHANGE<input id="pointsDuoDelta" type="number" step="1" value="0" placeholder="+5 or -5"><div class="hint">Current Admin Adjustment: ${esc(row.duo_adjustment)}</div></label><label>SQUAD ADMIN CHANGE<input id="pointsSquadDelta" type="number" step="1" value="0" placeholder="+5 or -5"><div class="hint">Current Admin Adjustment: ${esc(row.squad_adjustment)}</div></label><div class="info-box"><small>CURRENT TOTAL</small><strong>SOLO ${esc(row.solo_total)} • DUO ${esc(row.duo_total)} • SQUAD ${esc(row.squad_total)}</strong></div></div><div class="auth-actions" style="justify-content:flex-start"><button class="btn btn-primary" type="submit">APPLY POINT CHANGES</button><button class="btn btn-dark" id="adminPointsCancel" type="button">CANCEL</button></div></form>`);
+    document.getElementById("adminPointsEditForm")?.addEventListener("submit", (event) => saveAdminPointsEdit(event, row));
+    document.getElementById("adminPointsCancel")?.addEventListener("click", closeModal);
+  }
+
+  async function saveAdminPointsEdit(event, row) {
+    event.preventDefault();
+    try {
+      const solo = Number(document.getElementById("pointsSoloDelta")?.value || 0);
+      const duo = Number(document.getElementById("pointsDuoDelta")?.value || 0);
+      const squad = Number(document.getElementById("pointsSquadDelta")?.value || 0);
+      if (![solo, duo, squad].every(Number.isInteger)) throw new Error("Point changes must be whole numbers.");
+      if (solo === 0 && duo === 0 && squad === 0) throw new Error("Enter at least one point change.");
+      if (Math.abs(solo) > 1000 || Math.abs(duo) > 1000 || Math.abs(squad) > 1000) throw new Error("A single admin point change cannot exceed 1000 points.");
+
+      const summary = [`SOLO ${solo >= 0 ? "+" : ""}${solo}`, `DUO ${duo >= 0 ? "+" : ""}${duo}`, `SQUAD ${squad >= 0 ? "+" : ""}${squad}`].filter((value) => !/ 0$/.test(value)).join(" • ");
+      if (!confirm(`Apply point changes to ${row.team_name}?\n\n${summary}`)) return;
+
+      const { error } = await supabase.rpc("admin_adjust_team_points", {
+        p_team_id: row.team_id,
+        p_solo_delta: solo,
+        p_duo_delta: duo,
+        p_squad_delta: squad
+      });
+      if (error) throw error;
+
+      closeModal();
+      showToast("Team points updated successfully. Rankings recalculated.");
+      await refreshAdmin();
+    } catch (error) {
+      console.error(error);
+      showToast(friendlyError(error, "Could not update team points."), "error");
+    }
+  }
+
   /* ========================= ADMIN CENTER ========================= */
 
   async function adminPage() {
     const [profiles, teams, challenges, recruitment, results] = await Promise.all([
       supabase.from("profiles").select("*").neq("role", "admin").order("created_at", { ascending: false }).limit(300),
-      supabase.from("teams").select("*").order("created_at", { ascending: false }).limit(300),
+      supabase.from("teams").select("*").neq("status", "removed").order("created_at", { ascending: false }).limit(300),
       supabase.from("practice_challenges").select("*").order("created_at", { ascending: false }).limit(300),
       supabase.from("recruitment_posts").select("*").order("created_at", { ascending: false }).limit(300),
       supabase.from("team_match_results").select("*").order("created_at", { ascending: false }).limit(300)
@@ -1234,7 +1456,7 @@
     const pending = state.registrations.filter((row) => row.status === "pending").length;
     const resultPending = state.results.filter((row) => row.status === "pending").length;
 
-    return `<div class="container"><div style="margin-bottom:16px"><div class="kicker">RESTRICTED CONTROL</div><div class="admin-toolbar"><div><h1 class="title" style="margin-bottom:6px">ADMIN CONTROL CENTER</h1><div class="desc">Approval, member management, team editing, ban/unban, soft-remove/restore, result verification and post moderation.</div></div><div class="toolbar-actions"><button class="btn btn-dark btn-small" id="adminDashboardBtn" type="button">DASHBOARD</button><button class="btn btn-logout btn-small" id="adminLogoutBtn" type="button">LOGOUT</button></div></div></div><div class="quick-grid"><div class="quick"><div class="qicon">${pending}</div><b>PENDING MEMBERS</b><span>Registration queue.</span></div><div class="quick"><div class="qicon">${resultPending}</div><b>PENDING RESULTS</b><span>Verification queue.</span></div><div class="quick"><div class="qicon">${state.teams.length}</div><b>TEAMS</b><span>Full team directory.</span></div><div class="quick"><div class="qicon">${state.results.filter((row) => row.status === "approved").length}</div><b>VERIFIED RESULTS</b><span>Permanent records.</span></div></div><div class="admin-grid" style="margin-top:16px"><aside class="admin-tabs"><button class="admin-tab ${state.adminSection === "registrations" ? "active" : ""}" data-admin="registrations">REGISTRATIONS <span class="admin-count">${pending}</span></button><button class="admin-tab ${state.adminSection === "members" ? "active" : ""}" data-admin="members">MEMBERS</button><button class="admin-tab ${state.adminSection === "teams" ? "active" : ""}" data-admin="teams">TEAMS</button><button class="admin-tab ${state.adminSection === "results" ? "active" : ""}" data-admin="results">RESULTS <span class="admin-count">${resultPending}</span></button><button class="admin-tab ${state.adminSection === "practice" ? "active" : ""}" data-admin="practice">PRACTICE</button><button class="admin-tab ${state.adminSection === "recruitment" ? "active" : ""}" data-admin="recruitment">RECRUITMENT</button></aside><section>${adminContent()}</section></div></div>`;
+    return `<div class="container"><div style="margin-bottom:16px"><div class="kicker">RESTRICTED CONTROL</div><div class="admin-toolbar"><div><h1 class="title" style="margin-bottom:6px">ADMIN CONTROL CENTER</h1><div class="desc">Approval, member management, team editing, 3-dot team controls, point adjustments, permanent team removal, result verification and post moderation.</div></div><div class="toolbar-actions"><button class="btn btn-dark btn-small" id="adminDashboardBtn" type="button">DASHBOARD</button><button class="btn btn-logout btn-small" id="adminLogoutBtn" type="button">LOGOUT</button></div></div></div><div class="quick-grid"><div class="quick"><div class="qicon">${pending}</div><b>PENDING MEMBERS</b><span>Registration queue.</span></div><div class="quick"><div class="qicon">${resultPending}</div><b>PENDING RESULTS</b><span>Verification queue.</span></div><div class="quick"><div class="qicon">${state.teams.length}</div><b>TEAMS</b><span>Full team directory.</span></div><div class="quick"><div class="qicon">${state.results.filter((row) => row.status === "approved").length}</div><b>VERIFIED RESULTS</b><span>Permanent records.</span></div></div><div class="admin-grid" style="margin-top:16px"><aside class="admin-tabs"><button class="admin-tab ${state.adminSection === "registrations" ? "active" : ""}" data-admin="registrations">REGISTRATIONS <span class="admin-count">${pending}</span></button><button class="admin-tab ${state.adminSection === "members" ? "active" : ""}" data-admin="members">MEMBERS</button><button class="admin-tab ${state.adminSection === "teams" ? "active" : ""}" data-admin="teams">TEAMS</button><button class="admin-tab ${state.adminSection === "results" ? "active" : ""}" data-admin="results">RESULTS <span class="admin-count">${resultPending}</span></button><button class="admin-tab ${state.adminSection === "practice" ? "active" : ""}" data-admin="practice">PRACTICE</button><button class="admin-tab ${state.adminSection === "recruitment" ? "active" : ""}" data-admin="recruitment">RECRUITMENT</button></aside><section>${adminContent()}</section></div></div>`;
   }
 
   function adminContent() {
@@ -1255,12 +1477,164 @@
     return `<div class="panel"><div class="panel-head"><div><div class="kicker">MEMBER DIRECTORY</div><h3>ALL WEBSITE MEMBERS</h3><div class="subtle">Edit member name/contact/role. Approve, reject, ban or unban from here.</div></div></div><div class="table-shell"><table><thead><tr><th>Member</th><th>Team</th><th>Role</th><th>Contact</th><th>Status</th><th>Control</th></tr></thead><tbody>${state.registrations.map((row) => `<tr><td><strong>${esc(row.display_name)}</strong></td><td>${esc(row.team_name || "—")}</td><td>${esc(roleName(row.role))}</td><td>${esc(row.phone || "—")}</td><td>${esc(row.status)}</td><td><div class="admin-action-grid"><button class="btn btn-dark btn-small" data-edit-member="${esc(row.id)}">EDIT</button>${row.status === "approved" ? `<button class="btn btn-danger btn-small" data-profile-status="${esc(row.id)}" data-next="banned">BAN</button>` : row.status === "banned" ? `<button class="btn btn-green btn-small" data-profile-status="${esc(row.id)}" data-next="approved">UNBAN</button>` : row.status === "pending" ? `<button class="btn btn-green btn-small" data-profile-status="${esc(row.id)}" data-next="approved">APPROVE</button>` : ""}</div></td></tr>`).join("") || `<tr><td colspan="6">No members.</td></tr>`}</tbody></table></div></div>`;
   }
 
+  async function getAdminTeamDetails(teamId) {
+    const { data, error } = await supabase.rpc("admin_get_team_details", { p_team_id: teamId });
+    if (error) throw error;
+    return Array.isArray(data) ? data[0] : data;
+  }
+
+  function teamPointCards(detail) {
+    return `<div class="team-info-grid">
+      <div class="team-info-card"><small>SOLO POINTS</small><strong>${esc(detail.solo_points ?? 0)}</strong></div>
+      <div class="team-info-card"><small>DUO POINTS</small><strong>${esc(detail.duo_points ?? 0)}</strong></div>
+      <div class="team-info-card"><small>SQUAD POINTS</small><strong>${esc(detail.squad_points ?? 0)}</strong></div>
+    </div>`;
+  }
+
+  function teamMembersCards(detail) {
+    const members = Array.isArray(detail.members) ? detail.members : [];
+    if (!members.length) return `<div class="empty">No website members are currently attached to this team.</div>`;
+    return members.map((m) => `<div class="team-member-card">
+      <div class="team-member-head"><div><strong>${esc(m.display_name || "—")}</strong><div class="meta">${esc(roleName(m.role))}</div></div><span class="badge ${m.status === "approved" ? "badge-green" : m.status === "banned" ? "badge-danger" : "badge-warn"}">${esc(m.status || "—")}</span></div>
+      <div class="team-member-meta"><div><b>CONTACT</b><br>${esc(m.phone || "—")}</div><div><b>EMAIL</b><br>${esc(m.email || "—")}</div><div><b>ROLE</b><br>${esc(roleName(m.role))}</div></div>
+    </div>`).join("");
+  }
+
+  async function openAdminTeamInfo(teamId) {
+    try {
+      const detail = await getAdminTeamDetails(teamId);
+      if (!detail) throw new Error("Team details not found.");
+      state.teamDetails = detail;
+      showModal("TEAM INFORMATION", `<div class="identity" style="margin-bottom:14px">${logo(detail.logo_url, detail.team_name, "profile-logo")}<div><strong style="font-family:'Barlow Condensed',sans-serif;font-size:27px">${esc(detail.team_name)}</strong><div class="meta">IGL: ${esc(detail.igl_name || "—")} • STATUS: ${esc(detail.team_status || "—")}</div></div></div>${teamPointCards(detail)}<div class="kicker" style="margin-bottom:7px">TEAM MEMBERS</div>${teamMembersCards(detail)}<div class="auth-actions" style="justify-content:flex-start;margin-top:12px"><button class="btn btn-primary" id="teamInfoEditBtn" type="button">EDIT</button><button class="btn btn-dark" id="teamInfoCloseBtn" type="button">CLOSE</button></div>`);
+      document.getElementById("teamInfoEditBtn")?.addEventListener("click", () => openAdminTeamEdit(teamId));
+      document.getElementById("teamInfoCloseBtn")?.addEventListener("click", closeModal);
+    } catch (error) {
+      console.error(error);
+      showToast(friendlyError(error, "Could not load team information."), "error");
+    }
+  }
+
+  async function openAdminTeamEdit(teamId) {
+    try {
+      const detail = await getAdminTeamDetails(teamId);
+      if (!detail) throw new Error("Team details not found.");
+      state.teamDetails = detail;
+      const members = Array.isArray(detail.members) ? detail.members : [];
+      const memberEditors = members.map((m) => `<div class="team-member-card">
+        <div class="team-member-head"><div><strong>${esc(m.display_name || "—")}</strong><div class="meta">${esc(m.email || "—")} • ${esc(roleName(m.role))}</div></div><button class="btn btn-danger btn-small" type="button" data-remove-member="${esc(m.user_id)}" data-remove-team="${esc(detail.team_id)}">REMOVE MEMBER</button></div>
+        <div class="field-grid">
+          <label>MEMBER NAME<input class="admin-member-name" data-member-id="${esc(m.user_id)}" value="${esc(m.display_name || "")}" maxlength="60"></label>
+          <label>CONTACT<input class="admin-member-phone" data-member-id="${esc(m.user_id)}" value="${esc(m.phone || "")}" maxlength="20"></label>
+          <label>WEBSITE ROLE<select class="admin-member-role" data-member-id="${esc(m.user_id)}"><option value="leader" ${m.role === "leader" ? "selected" : ""}>Team Leader / IGL</option><option value="sub_leader" ${m.role === "sub_leader" ? "selected" : ""}>Sub-Leader</option></select></label>
+          <div class="info-box"><small>EMAIL</small><strong style="word-break:break-word">${esc(m.email || "—")}</strong></div>
+        </div>
+        <div class="auth-actions" style="justify-content:flex-start"><button class="btn btn-dark btn-small" type="button" data-save-member-inline="${esc(m.user_id)}" data-member-role="${esc(m.role)}">SAVE MEMBER</button></div>
+      </div>`).join("");
+
+      showModal("EDIT TEAM", `<form id="adminTeamEditForm"><div class="identity" style="margin-bottom:12px">${logo(detail.logo_url, detail.team_name, "profile-logo")}<div><strong style="font-family:'Barlow Condensed',sans-serif;font-size:24px">${esc(detail.team_name)}</strong><div class="meta">Edit team identity, member contact/details and points.</div></div></div><div class="field-grid"><label>TEAM NAME *<input id="adminTeamName" maxlength="50" value="${esc(detail.team_name || "")}" required></label><label>IGL NAME *<input id="adminIglName" maxlength="60" value="${esc(detail.igl_name || "")}" required></label><label>TEAM LOGO — OPTIONAL<input id="adminTeamLogo" type="file" accept="image/png,image/jpeg,image/webp"><div class="hint">Leave empty to keep current logo.</div></label><div class="info-box"><small>TEAM EMAIL</small><strong>Emails are shown per member and are managed by Auth.</strong></div></div><div class="kicker" style="margin:14px 0 7px">MEMBERS — CONTACT / ROLE / REMOVE</div>${memberEditors || `<div class="empty">No members found.</div>`}<div class="kicker" style="margin:14px 0 7px">POINT ADJUSTMENT</div><div class="access-note"><b>POINTS:</b> Enter +1 / +2 to add or -1 / -2 to subtract. Verified match results are never edited. Changes are separate Admin Adjustments.</div><div class="field-grid"><label>SOLO CHANGE<input id="pointsSoloDelta" type="number" step="1" value="0" placeholder="+1 / -1"><div class="hint">Current SOLO total: ${esc(detail.solo_points ?? 0)}</div><div class="quick-points"><button type="button" data-point-input="pointsSoloDelta" data-point-delta="1">+1</button><button type="button" data-point-input="pointsSoloDelta" data-point-delta="2">+2</button><button type="button" data-point-input="pointsSoloDelta" data-point-delta="-1">−1</button><button type="button" data-point-input="pointsSoloDelta" data-point-delta="-2">−2</button></div></label><label>DUO CHANGE<input id="pointsDuoDelta" type="number" step="1" value="0" placeholder="+1 / -1"><div class="hint">Current DUO total: ${esc(detail.duo_points ?? 0)}</div><div class="quick-points"><button type="button" data-point-input="pointsDuoDelta" data-point-delta="1">+1</button><button type="button" data-point-input="pointsDuoDelta" data-point-delta="2">+2</button><button type="button" data-point-input="pointsDuoDelta" data-point-delta="-1">−1</button><button type="button" data-point-input="pointsDuoDelta" data-point-delta="-2">−2</button></div></label><label>SQUAD CHANGE<input id="pointsSquadDelta" type="number" step="1" value="0" placeholder="+1 / -1"><div class="hint">Current SQUAD total: ${esc(detail.squad_points ?? 0)}</div><div class="quick-points"><button type="button" data-point-input="pointsSquadDelta" data-point-delta="1">+1</button><button type="button" data-point-input="pointsSquadDelta" data-point-delta="2">+2</button><button type="button" data-point-input="pointsSquadDelta" data-point-delta="-1">−1</button><button type="button" data-point-input="pointsSquadDelta" data-point-delta="-2">−2</button></div></label></div><div class="auth-actions" style="justify-content:flex-start"><button class="btn btn-primary" type="submit">SAVE TEAM + POINTS</button><button class="btn btn-dark" id="adminEditCancel" type="button">CANCEL</button></div></form>`);
+
+      document.getElementById("adminEditCancel")?.addEventListener("click", closeModal);
+      document.getElementById("adminTeamEditForm")?.addEventListener("submit", (event) => saveCombinedAdminTeamEdit(event, detail));
+      document.querySelectorAll("[data-point-input]").forEach((button) => button.addEventListener("click", () => {
+        const input = document.getElementById(button.dataset.pointInput);
+        if (!input) return;
+        input.value = String(Number(input.value || 0) + Number(button.dataset.pointDelta || 0));
+      }));
+      document.querySelectorAll("[data-save-member-inline]").forEach((button) => button.addEventListener("click", () => saveInlineMember(button.dataset.saveMemberInline, detail.team_id)));
+      document.querySelectorAll("[data-remove-member]").forEach((button) => button.addEventListener("click", () => adminRemoveMember(button.dataset.removeMember, button.dataset.removeTeam)));
+    } catch (error) {
+      console.error(error);
+      showToast(friendlyError(error, "Could not open team editor."), "error");
+    }
+  }
+
+  async function saveCombinedAdminTeamEdit(event, detail) {
+    event.preventDefault();
+    try {
+      const teamName = document.getElementById("adminTeamName")?.value.trim() || "";
+      const iglName = document.getElementById("adminIglName")?.value.trim() || "";
+      const file = document.getElementById("adminTeamLogo")?.files?.[0] || null;
+      if (!teamName || !iglName) throw new Error("Team name and IGL name are required.");
+
+      let logoUrl = detail.logo_url || null;
+      if (file) {
+        if (file.size > MAX_IMAGE_MB * 1024 * 1024 || !/^image\/(png|jpeg|webp)$/.test(file.type)) throw new Error(`Logo must be PNG/JPG/WEBP and ${MAX_IMAGE_MB} MB or smaller.`);
+        logoUrl = await uploadFile(LOGO_BUCKET, state.user.id, file);
+      }
+
+      const { error: teamError } = await supabase.rpc("admin_edit_team", {
+        p_team_id: detail.team_id,
+        p_team_name: teamName,
+        p_igl_name: iglName,
+        p_logo_url: logoUrl
+      });
+      if (teamError) throw teamError;
+
+      const solo = Number(document.getElementById("pointsSoloDelta")?.value || 0);
+      const duo = Number(document.getElementById("pointsDuoDelta")?.value || 0);
+      const squad = Number(document.getElementById("pointsSquadDelta")?.value || 0);
+      if (![solo, duo, squad].every(Number.isInteger)) throw new Error("Point changes must be whole numbers.");
+      if (Math.abs(solo) > 1000 || Math.abs(duo) > 1000 || Math.abs(squad) > 1000) throw new Error("A single point change cannot exceed 1000 per format.");
+      if (solo || duo || squad) {
+        const { error: pointsError } = await supabase.rpc("admin_adjust_team_points", { p_team_id: detail.team_id, p_solo_delta: solo, p_duo_delta: duo, p_squad_delta: squad });
+        if (pointsError) throw pointsError;
+      }
+
+      closeModal();
+      showToast("Team information and point changes saved successfully.");
+      await refreshAdmin();
+    } catch (error) {
+      console.error(error);
+      showToast(friendlyError(error, "Could not save team changes."), "error");
+    }
+  }
+
+  async function saveInlineMember(userId, teamId) {
+    try {
+      const nameEl = document.querySelector(`.admin-member-name[data-member-id="${CSS.escape(userId)}"]`);
+      const phoneEl = document.querySelector(`.admin-member-phone[data-member-id="${CSS.escape(userId)}"]`);
+      const roleEl = document.querySelector(`.admin-member-role[data-member-id="${CSS.escape(userId)}"]`);
+      const displayName = nameEl?.value.trim() || "";
+      const phoneRaw = phoneEl?.value.trim() || "";
+      const phone = phoneRaw ? cleanPhone(phoneRaw) : null;
+      const role = roleEl?.value || "";
+      if (!displayName) throw new Error("Member name is required.");
+      if (phone && !/^\+92\d{10}$/.test(phone)) throw new Error("Enter a valid Pakistan mobile number.");
+      const { error } = await supabase.rpc("admin_edit_member", { p_user_id: userId, p_display_name: displayName, p_phone: phone, p_role: role });
+      if (error) throw error;
+      showToast("Member details updated.");
+      await openAdminTeamEdit(teamId);
+    } catch (error) {
+      console.error(error);
+      showToast(friendlyError(error, "Could not update member."), "error");
+    }
+  }
+
+  async function adminRemoveMember(userId, teamId) {
+    const detail = state.teamDetails || await getAdminTeamDetails(teamId);
+    const member = (detail?.members || []).find((m) => m.user_id === userId);
+    if (!member) return showToast("Member not found.", "error");
+    const promoted = member.role === "leader" && (detail.members || []).some((m) => m.user_id !== userId && m.role === "sub_leader");
+    const warning = promoted ? " The remaining Sub-Leader will automatically become Team Leader / IGL." : "";
+    if (!confirm(`Remove ${member.display_name || "this member"} from ${detail.team_name}?${warning}\n\nThis does not remove the team's verified points.`)) return;
+    try {
+      const { error } = await supabase.rpc("admin_remove_team_member", { p_team_id: teamId, p_user_id: userId });
+      if (error) throw error;
+      closeModal();
+      showToast(`${member.display_name || "Member"} was removed from the team.`);
+      await refreshAdmin();
+    } catch (error) {
+      console.error(error);
+      showToast(friendlyError(error, "Could not remove member."), "error");
+    }
+  }
+
   function adminTeamsContent() {
-    return `<div class="panel"><div class="panel-head"><div><div class="kicker">TEAM MANAGEMENT</div><h3>ALL TEAMS</h3><div class="subtle">EDIT TEAM INFO, BAN/UNBAN, or REMOVE/RESTORE a team. REMOVE is a soft removal so historical result records remain intact.</div></div></div><div class="table-shell"><table><thead><tr><th>Team</th><th>IGL</th><th>Status</th><th>Created</th><th>Control</th></tr></thead><tbody>${state.teams.map((team) => {
-      const action = team.status === "banned" ? `<button class="btn btn-green btn-small" data-team-status="${esc(team.id)}" data-next="active">UNBAN</button>` : `<button class="btn btn-danger btn-small" data-team-status="${esc(team.id)}" data-next="banned">BAN</button>`;
-      const removeAction = team.status === "removed" ? `<button class="btn btn-green btn-small" data-team-status="${esc(team.id)}" data-next="active">RESTORE</button>` : `<button class="btn btn-danger btn-small" data-team-status="${esc(team.id)}" data-next="removed">REMOVE</button>`;
-      return `<tr><td><div class="identity">${logo(team.logo_url, team.name)}<strong>${esc(team.name)}</strong></div></td><td>${esc(team.igl_name || "—")}</td><td><span class="badge ${team.status === "active" ? "badge-green" : team.status === "banned" ? "badge-danger" : "badge-warn"}">${esc(team.status)}</span></td><td>${esc(formatDate(team.created_at))}</td><td><div class="admin-action-grid"><button class="btn btn-primary btn-small" data-edit-team="${esc(team.id)}">EDIT TEAM INFO</button>${action}${removeAction}</div></td></tr>`;
-    }).join("") || `<tr><td colspan="5">No teams.</td></tr>`}</tbody></table></div></div>`;
+    return `<div class="panel"><div class="panel-head"><div><div class="kicker">TEAM MANAGEMENT</div><h3>ALL TEAMS</h3><div class="subtle">Use the <b>⋮</b> menu on any team to view complete information, edit team data, change points, remove one member, ban/unban, or permanently remove the whole team.</div></div><span class="badge badge-blue">3-DOT CONTROL</span></div><div class="table-shell"><table><thead><tr><th>Team</th><th>IGL</th><th>Status</th><th>Created</th><th>Control</th></tr></thead><tbody>${state.teams.map((team) => {
+      const banLabel = team.status === "banned" ? "UNBAN TEAM" : "BAN TEAM";
+      const banClass = team.status === "banned" ? "green" : "danger";
+      return `<tr><td><div class="identity">${logo(team.logo_url, team.name)}<div><strong>${esc(team.name)}</strong><div class="meta">IGL: ${esc(team.igl_name || "—")}</div></div></div></td><td>${esc(team.igl_name || "—")}</td><td><span class="badge ${team.status === "active" ? "badge-green" : team.status === "banned" ? "badge-danger" : "badge-warn"}">${esc(team.status)}</span></td><td>${esc(formatDate(team.created_at))}</td><td><div class="team-menu" data-team-menu-wrap="${esc(team.id)}"><button class="team-menu-toggle" type="button" data-team-menu-toggle="${esc(team.id)}" aria-label="Team actions">⋮</button><div class="team-menu-panel"><button class="team-menu-item" data-team-info="${esc(team.id)}">TEAM INFO</button><button class="team-menu-item" data-team-edit="${esc(team.id)}">EDIT</button><button class="team-menu-item ${banClass}" data-team-status="${esc(team.id)}" data-next="${team.status === "banned" ? "active" : "banned"}">${banLabel}</button><button class="team-menu-item danger" data-team-remove="${esc(team.id)}">REMOVE TEAM</button></div></div></td></tr>`;
+    }).join("") || `<tr><td colspan="5"><div class="empty">No teams.</div></td></tr>`}</tbody></table></div></div>`;
   }
 
   function adminResultsContent() {
@@ -1273,7 +1647,7 @@
   }
 
   function adminPracticeContent() {
-    return `<div class="panel"><div class="panel-head"><div><div class="kicker">LIVE ARENA</div><h3>PRACTICE CHALLENGES</h3></div></div><div class="table-shell"><table><thead><tr><th>Team</th><th>Match</th><th>Format</th><th>Time</th><th>Status</th><th>Control</th></tr></thead><tbody>${state.challenges.map((challenge) => `<tr><td>${esc(challenge.team_name)}</td><td>${esc(challenge.match_type)}</td><td>${esc(challenge.format)}</td><td>${esc(formatDate(challenge.match_time))}</td><td>${esc(challenge.status)}</td><td><button class="btn btn-dark btn-small" data-post="practice" data-id="${esc(challenge.id)}" data-next="${challenge.status === "open" ? "closed" : "open"}">${challenge.status === "open" ? "CLOSE" : "REOPEN"}</button></td></tr>`).join("") || `<tr><td colspan="6">No challenges.</td></tr>`}</tbody></table></div></div>`;
+    return `<div class="panel"><div class="panel-head"><div><div class="kicker">LIVE ARENA</div><h3>PRACTICE CHALLENGES</h3></div></div><div class="table-shell"><table><thead><tr><th>Team</th><th>Match</th><th>Format</th><th>Time</th><th>Status</th><th>Control</th></tr></thead><tbody>${state.challenges.map((challenge) => `<tr><td>${esc(challenge.team_name)}</td><td>${esc(challenge.match_type)}</td><td>${esc(challenge.format)}</td><td>${esc(formatTimeOnly(challenge.match_time))}</td><td>${esc(challenge.status)}</td><td>${["open","accepted"].includes(challenge.status) ? `<button class="btn btn-dark btn-small" data-post="practice" data-id="${esc(challenge.id)}" data-next="closed">CLOSE</button>` : "—"}</td></tr>`).join("") || `<tr><td colspan="6">No challenges.</td></tr>`}</tbody></table></div></div>`;
   }
 
   function adminRecruitmentContent() {
@@ -1300,6 +1674,16 @@
     showToast("Logged out successfully.");
   }
 
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".team-menu")) document.querySelectorAll(".team-menu.open").forEach((node) => node.classList.remove("open"));
+  });
+  window.addEventListener("scroll", () => {
+    document.querySelectorAll(".team-menu.open").forEach((node) => node.classList.remove("open"));
+  }, { passive: true });
+  window.addEventListener("resize", () => {
+    document.querySelectorAll(".team-menu.open").forEach((node) => node.classList.remove("open"));
+  });
+
   function bindAdmin() {
     document.getElementById("adminLogoutBtn")?.addEventListener("click", handleLogout);
     document.getElementById("adminDashboardBtn")?.addEventListener("click", () => {
@@ -1311,10 +1695,36 @@
       renderMember();
     }));
     document.querySelectorAll("[data-profile-status]").forEach((button) => button.addEventListener("click", () => adminMemberStatus(button.dataset.profileStatus, button.dataset.next)));
+    document.querySelectorAll("[data-team-menu-toggle]").forEach((button) => button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const wrap = button.closest("[data-team-menu-wrap]");
+      document.querySelectorAll(".team-menu.open").forEach((node) => { if (node !== wrap) node.classList.remove("open"); });
+      if (!wrap) return;
+      wrap.classList.toggle("open");
+      if (wrap.classList.contains("open")) {
+        const panel = wrap.querySelector(".team-menu-panel");
+        const rect = button.getBoundingClientRect();
+        if (panel) {
+          const viewportPad = 8;
+          const panelWidth = Math.min(Math.max(panel.offsetWidth || 190, 170), window.innerWidth - viewportPad * 2);
+          const panelHeight = panel.offsetHeight || 220;
+          let left = rect.right - panelWidth;
+          let top = rect.bottom + 6;
+          if (left < viewportPad) left = viewportPad;
+          if (left + panelWidth > window.innerWidth - viewportPad) left = window.innerWidth - panelWidth - viewportPad;
+          if (top + panelHeight > window.innerHeight - viewportPad) top = Math.max(viewportPad, rect.top - panelHeight - 6);
+          panel.style.width = `${panelWidth}px`;
+          panel.style.left = `${Math.round(left)}px`;
+          panel.style.top = `${Math.round(top)}px`;
+        }
+      }
+    }));
+    document.querySelectorAll("[data-team-info]").forEach((button) => button.addEventListener("click", () => { document.querySelector(`[data-team-menu-wrap="${CSS.escape(button.dataset.teamInfo)}"]`)?.classList.remove("open"); openAdminTeamInfo(button.dataset.teamInfo); }));
+    document.querySelectorAll("[data-team-edit]").forEach((button) => button.addEventListener("click", () => { document.querySelector(`[data-team-menu-wrap="${CSS.escape(button.dataset.teamEdit)}"]`)?.classList.remove("open"); openAdminTeamEdit(button.dataset.teamEdit); }));
     document.querySelectorAll("[data-team-status]").forEach((button) => button.addEventListener("click", () => adminTeamStatus(button.dataset.teamStatus, button.dataset.next)));
+    document.querySelectorAll("[data-team-remove]").forEach((button) => button.addEventListener("click", () => adminRemoveTeam(button.dataset.teamRemove)));
     document.querySelectorAll("[data-review]").forEach((button) => button.addEventListener("click", () => reviewResult(button.dataset.review, button.dataset.next)));
     document.querySelectorAll("[data-post]").forEach((button) => button.addEventListener("click", () => adminPost(button.dataset.post, button.dataset.id, button.dataset.next)));
-    document.querySelectorAll("[data-edit-team]").forEach((button) => button.addEventListener("click", () => openAdminTeamEdit(button.dataset.editTeam)));
     document.querySelectorAll("[data-edit-member]").forEach((button) => button.addEventListener("click", () => openAdminMemberEdit(button.dataset.editMember)));
   }
 
@@ -1333,7 +1743,11 @@
   }
 
   async function adminTeamStatus(teamId, status) {
-    const action = status === "banned" ? "BAN" : status === "removed" ? "REMOVE" : "RESTORE / ACTIVATE";
+    if (!['active', 'banned'].includes(status)) {
+      showToast("Invalid team status action.", "error");
+      return;
+    }
+    const action = status === "banned" ? "BAN" : "UNBAN";
     if (!confirm(`Confirm ${action} for this team?`)) return;
     try {
       const { error } = await supabase.rpc("admin_set_team_status", { p_team_id: teamId, p_status: status });
@@ -1343,6 +1757,23 @@
     } catch (error) {
       console.error(error);
       showToast(friendlyError(error, "Could not update team status."), "error");
+    }
+  }
+
+  async function adminRemoveTeam(teamId) {
+    const team = state.teams.find((row) => row.id === teamId);
+    const name = team?.name || "this team";
+    if (!confirm(`PERMANENT REMOVE: ${name}?\n\nTeam/member/post data will be removed. Verified points will be preserved. This action cannot be undone.`)) return;
+    try {
+      const { error } = await supabase.rpc("admin_remove_team_permanently", {
+        p_team_id: teamId
+      });
+      if (error) throw error;
+      showToast(`${name} was permanently removed. Verified points were preserved.`);
+      await refreshAdmin();
+    } catch (error) {
+      console.error(error);
+      showToast(friendlyError(error, "Could not permanently remove team."), "error");
     }
   }
 
@@ -1361,6 +1792,9 @@
 
   async function adminPost(kind, id, status) {
     try {
+      if (kind === "practice" && status === "open") {
+        throw new Error("Practice challenges cannot be reopened after being closed or accepted.");
+      }
       const functionName = kind === "practice" ? "admin_set_practice_status" : "admin_set_recruitment_status";
       const { error } = await supabase.rpc(functionName, { p_id: id, p_status: status });
       if (error) throw error;
@@ -1375,49 +1809,6 @@
   async function refreshAdmin() {
     state.section = "admin";
     await loadMemberSection();
-  }
-
-  function openAdminTeamEdit(teamId) {
-    const team = state.teams.find((row) => row.id === teamId);
-    if (!team) return showToast("Team not found in the current admin list.", "error");
-    showModal("EDIT TEAM INFORMATION", `<form id="adminTeamEditForm"><div class="field-grid"><label>TEAM NAME *<input id="adminTeamName" maxlength="50" value="${esc(team.name)}" required></label><label>IGL NAME *<input id="adminIglName" maxlength="60" value="${esc(team.igl_name || "")}" required></label><label>TEAM LOGO — OPTIONAL<input id="adminTeamLogo" type="file" accept="image/png,image/jpeg,image/webp"><div class="hint">Leave empty to keep current logo.</div></label><label class="full"><span style="display:block;color:#8199ae;font-size:8px">CURRENT LOGO</span>${logo(team.logo_url, team.name, "profile-logo")}</label><label class="full"><span style="display:flex;align-items:center;gap:7px"><input id="adminRemoveLogo" type="checkbox" style="width:auto;min-height:0"> REMOVE CURRENT LOGO</span></label></div><div class="auth-actions" style="justify-content:flex-start"><button class="btn btn-primary" type="submit">SAVE TEAM INFO</button><button class="btn btn-dark" id="adminEditCancel" type="button">CANCEL</button></div></form>`);
-    document.getElementById("adminTeamEditForm")?.addEventListener("submit", (event) => saveAdminTeamEdit(event, team));
-    document.getElementById("adminEditCancel")?.addEventListener("click", closeModal);
-  }
-
-  async function saveAdminTeamEdit(event, team) {
-    event.preventDefault();
-    try {
-      const teamName = document.getElementById("adminTeamName")?.value.trim() || "";
-      const iglName = document.getElementById("adminIglName")?.value.trim() || "";
-      const removeLogo = !!document.getElementById("adminRemoveLogo")?.checked;
-      const file = document.getElementById("adminTeamLogo")?.files?.[0] || null;
-      if (!teamName || !iglName) throw new Error("Team name and IGL name are required.");
-
-      let logoUrl = team.logo_url || null;
-      if (removeLogo) logoUrl = null;
-      if (file) {
-        if (file.size > MAX_IMAGE_MB * 1024 * 1024 || !/^image\/(png|jpeg|webp)$/.test(file.type)) {
-          throw new Error(`Logo must be PNG/JPG/WEBP and ${MAX_IMAGE_MB} MB or smaller.`);
-        }
-        logoUrl = await uploadFile(LOGO_BUCKET, state.user.id, file);
-      }
-
-      const { error } = await supabase.rpc("admin_edit_team", {
-        p_team_id: team.id,
-        p_team_name: teamName,
-        p_igl_name: iglName,
-        p_logo_url: logoUrl
-      });
-      if (error) throw error;
-
-      closeModal();
-      showToast("Team information updated successfully.");
-      await refreshAdmin();
-    } catch (error) {
-      console.error(error);
-      showToast(friendlyError(error, "Could not edit team information."), "error");
-    }
   }
 
   function openAdminMemberEdit(userId) {
