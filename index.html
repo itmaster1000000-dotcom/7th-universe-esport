@@ -327,6 +327,28 @@
       background:rgba(45,224,255,.035);color:#9ed8e7;font-size:8px;line-height:1.55;margin-bottom:13px
     }
 
+    /* ---------- Match time picker ---------- */
+    .time-picker-button{
+      width:100%;min-height:82px;padding:14px 16px;border:1px solid rgba(45,224,255,.18);
+      border-radius:14px;color:#fff;background:linear-gradient(180deg,rgba(8,29,47,.94),rgba(3,11,19,.94));
+      text-align:left;display:flex;align-items:center;justify-content:space-between;gap:12px
+    }
+    .time-picker-button:hover{border-color:rgba(45,224,255,.48);box-shadow:0 0 0 3px rgba(45,224,255,.06)}
+    .time-picker-button .time-value{font:900 31px/1 "Barlow Condensed",sans-serif;letter-spacing:.05em;color:#dff9ff}
+    .time-picker-button .time-hint{display:block;margin-top:4px;color:#6989a1;font-size:7px;font-weight:900;letter-spacing:.12em;text-transform:uppercase}
+    .time-picker-button .time-icon{font-size:22px;color:#4ccfff}
+    .time-picker-modal{display:grid;gap:13px}
+    .time-picker-display{padding:18px 14px;text-align:center;border:1px solid rgba(45,224,255,.18);border-radius:16px;background:linear-gradient(180deg,rgba(8,33,52,.84),rgba(3,12,21,.92))}
+    .time-picker-display strong{display:block;font:900 48px/.9 "Barlow Condensed",sans-serif;letter-spacing:.05em;color:#effcff}
+    .time-picker-display small{display:block;margin-top:6px;color:#79a5bc;font-size:7px;font-weight:900;letter-spacing:.14em;text-transform:uppercase}
+    .time-picker-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+    .time-picker-grid label{gap:6px}
+    .time-picker-period{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .time-period-btn{min-height:55px;border:1px solid rgba(115,190,255,.10);border-radius:12px;background:rgba(255,255,255,.02);color:#7893a8;font-size:11px;font-weight:1000;letter-spacing:.08em}
+    .time-period-btn.active{color:#fff;border-color:rgba(45,224,255,.42);background:linear-gradient(135deg,rgba(14,108,255,.26),rgba(45,224,255,.08))}
+    .time-picker-actions{display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap}
+    .time-picker-actions .left-actions,.time-picker-actions .right-actions{display:flex;gap:8px;flex-wrap:wrap}
+
     /* ---------- Admin ---------- */
     .admin-grid{display:grid;grid-template-columns:215px 1fr;gap:14px}
     .admin-tabs{
@@ -358,6 +380,9 @@
     .btn-logout{border-color:rgba(255,82,115,.35);background:linear-gradient(135deg,rgba(255,48,86,.12),rgba(110,8,30,.09));color:#ffd2dc}
     .btn-logout:hover{border-color:rgba(255,82,115,.62);color:#fff;box-shadow:0 8px 24px rgba(255,48,86,.10)}
     .checkline{display:flex;align-items:center;gap:8px;color:#b8cfe2;font-size:8px}
+    .point-stat{display:grid;gap:3px}
+    .point-stat strong{font-family:"Barlow Condensed",sans-serif;font-size:18px;line-height:1;color:#eef7ff}
+    .point-stat span{color:#658099;font-size:7px;line-height:1.45}
 
     /* ---------- Modal / toast ---------- */
     .modal-backdrop{
@@ -495,7 +520,29 @@
       .result-matchup{font-size:18px;flex-wrap:wrap}
     }
 
-  </style>
+      .admin-action-grid{display:flex;flex-wrap:wrap;gap:6px}
+    .team-menu{position:relative;display:inline-block}
+    .team-menu-toggle{width:34px;min-width:34px;height:34px;padding:0;border-radius:10px;border:1px solid rgba(85,170,255,.18);background:rgba(7,19,32,.8);color:#bfe7ff;font-size:18px;font-weight:900;line-height:1}
+    .team-menu-toggle:hover{border-color:rgba(45,224,255,.42);color:#fff}
+    .team-menu-panel{display:none;position:fixed;right:auto;top:auto;z-index:120;min-width:190px;padding:6px;border:1px solid rgba(74,172,255,.2);border-radius:12px;background:rgba(5,13,23,.98);box-shadow:0 18px 45px rgba(0,0,0,.42)}
+    .team-menu.open .team-menu-panel{display:block}
+    .team-menu-item{display:block;width:100%;padding:10px 11px;border:0;border-radius:8px;background:transparent;color:#b8cee2;text-align:left;font-size:8px;font-weight:1000;letter-spacing:.06em;cursor:pointer}
+    .team-menu-item:hover{background:rgba(25,115,210,.12);color:#fff}
+    .team-menu-item.danger{color:#ff8f99}
+    .team-menu-item.green{color:#83e0af}
+    .quick-points{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
+    .quick-points button{border:1px solid rgba(85,170,255,.14);background:rgba(10,34,56,.7);color:#9dd6ff;border-radius:7px;padding:5px 8px;font-size:8px;font-weight:900;cursor:pointer}
+    .quick-points button:hover{border-color:rgba(45,224,255,.35);color:#fff}
+    .team-info-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-bottom:12px}
+    .team-info-card{padding:12px;border:1px solid rgba(85,170,255,.12);border-radius:12px;background:rgba(7,19,32,.64)}
+    .team-info-card small{display:block;color:#6e879f;font-size:7px;font-weight:900;letter-spacing:.14em}
+    .team-info-card strong{display:block;margin-top:4px;font-family:"Barlow Condensed",sans-serif;font-size:22px;color:#f3f7fc}
+    .team-member-card{padding:12px;border:1px solid rgba(85,170,255,.12);border-radius:12px;background:rgba(5,15,26,.62);margin-bottom:8px}
+    .team-member-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+    .team-member-head strong{font-family:"Barlow Condensed",sans-serif;font-size:17px;letter-spacing:.03em}
+    .team-member-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;color:#91a8bb;font-size:8px;line-height:1.45}
+    @media(max-width:760px){.team-info-grid,.team-member-meta{grid-template-columns:1fr}.team-menu-panel{min-width:170px;max-width:calc(100vw - 16px)}}
+</style>
 </head>
 <body>
   <div class="topline"></div>
@@ -546,9 +593,9 @@
         try {
           if (!window.supabase?.createClient) {
             try {
-              await loadSdk('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2');
+              await loadSdk('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2');
             } catch (_) {
-              await loadSdk('https://unpkg.com/@supabase/supabase-js@2');
+              await loadSdk('https://unpkg.com/@supabase/supabase-js@2.117.2');
             }
           }
 
@@ -557,7 +604,7 @@
           }
 
           const s = document.createElement('script');
-          s.src = './script.js?v=esports-v9-format-rankings';
+          s.src = './script.js?v=esports-v19-integrated';
           s.defer = true;
           s.onerror = () => showBootError('script.js could not be loaded. Confirm that script.js is in the same GitHub/Cloudflare folder as index.html.');
           document.body.appendChild(s);
