@@ -604,9 +604,9 @@
           }
 
           const s = document.createElement('script');
-          s.src = './script.js?v=esports-v19-integrated';
+          s.src = './script.js?v=esports-v25-hardened';
           s.defer = true;
-          s.onerror = () => showBootError('script.js could not be loaded. Confirm that script.js is in the same GitHub/Cloudflare folder as index.html.');
+          s.onerror = () => showBootError('script.js could not be loaded. Confirm that script.js is in the same GitHub website folder as index.html.');
           document.body.appendChild(s);
         } catch (error) {
           showBootError(error.message || 'Website startup failed.');
