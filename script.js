@@ -189,7 +189,7 @@
     const code = String(error?.code || "");
 
     if (code === "42501" || /permission denied|not permitted|administrator access required/i.test(message)) {
-      return "Database denied this action. Run the latest ESPORTS V25 hardening SQL and verify the admin profile is role=admin and status=approved.";
+      return "Database denied this action. Run the latest ESPORTS hardening SQL and make sure your admin profile is role=admin and status=approved and make sure your admin profile is role=admin and status=approved.";
     }
     if (code === "23505" || /duplicate key|already exists/i.test(message)) {
       return "This value already exists. Check the team name, email, or selected role.";
@@ -315,11 +315,8 @@
       }
 
       if (state.isAdmin) {
-        // Administrators do not require a team membership.
-        // V25 RLS intentionally restricts team-member reads, so do not query
-        // team_members during administrator session hydration.
-        state.membership = null;
-        state.team = null;
+        state.membership = await getMembership(state.user.id);
+        state.team = state.membership?.teams || null;
       } else {
         const approvedTeam = await getApprovedTeamContext();
         if (!approvedTeam) {
@@ -686,11 +683,8 @@
       state.user = data.user;
       state.profile = profile;
       state.isAdmin = true;
-      // Admin accounts are global administrators and do not need team membership.
-      // Avoid querying team_members here because V25 RLS does not grant admins
-      // blanket client-side access to team_members.
-      state.membership = null;
-      state.team = null;
+      state.membership = await getMembership(data.user.id);
+      state.team = state.membership?.teams || null;
       state.screen = "member";
       state.section = "admin";
       render();
