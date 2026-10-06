@@ -1,5 +1,5 @@
 /*
-  7TH UNIVERSE ESPORTS — PRODUCTION REVIEW BUILD v20
+  7TH UNIVERSE ESPORTS — PRODUCTION FINAL HARDENED BUILD v25
   Simple frontend: index.html + script.js + logo only.
   Backend: Supabase Auth/DB/Storage + Railway/Baileys bridge.
 
@@ -189,7 +189,7 @@
     const code = String(error?.code || "");
 
     if (code === "42501" || /permission denied|not permitted|administrator access required/i.test(message)) {
-      return "Database denied this action. Run the latest ESPORTS SQL Parts 1–18 and make sure your admin profile is role=admin and status=approved.";
+      return "Database denied this action. Run the latest ESPORTS hardening SQL and make sure your admin profile is role=admin and status=approved and make sure your admin profile is role=admin and status=approved.";
     }
     if (code === "23505" || /duplicate key|already exists/i.test(message)) {
       return "This value already exists. Check the team name, email, or selected role.";
@@ -268,7 +268,7 @@
 
   async function ensureApprovedTeam() {
     const team = await getApprovedTeamContext();
-    if (!team) throw new Error("No approved active team membership was found for this account. Ask the administrator to re-check your team approval.");
+    if (!team) throw new Error("No approved active team membership was found for this account. Ask the administrator to re-check the team approval in Admin → Registrations / Members.");
     return team;
   }
 
@@ -569,7 +569,7 @@
     }
   }
 
-  async function uploadFile(bucket, uid, file) {
+  async function uploadFile(bucket, uid, file, { privateObject = false } = {}) {
     const ext = file.name.split(".").pop()?.toLowerCase() || "bin";
     const path = `${uid}/${crypto.randomUUID()}.${ext}`;
     const { error } = await supabase.storage.from(bucket).upload(path, file, {
@@ -578,7 +578,56 @@
       contentType: file.type
     });
     if (error) throw error;
+    if (privateObject) return path;
     return supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+  }
+
+  const proofUrlCache = new Map();
+
+  async function resolveProofUrl(reference) {
+    const raw = String(reference || "").trim();
+    if (!raw) throw new Error("Proof image reference is missing.");
+
+    let path = raw;
+    const marker = "/storage/v1/object/public/result-proofs/";
+    try {
+      const parsed = new URL(raw);
+      const idx = parsed.pathname.indexOf(marker);
+      if (idx >= 0) path = decodeURIComponent(parsed.pathname.slice(idx + marker.length));
+      else if (/^https?:$/i.test(parsed.protocol)) return raw;
+    } catch (_) {
+      // Keep raw as a storage path.
+    }
+
+    if (/^https?:\/\//i.test(path)) return path;
+
+    const cached = proofUrlCache.get(path);
+    if (cached && cached.expiresAt > Date.now()) return cached.url;
+
+    const { data, error } = await supabase.storage
+      .from(RESULT_BUCKET)
+      .createSignedUrl(path, 15 * 60);
+
+    if (error || !data?.signedUrl) {
+      throw error || new Error("Could not create a secure proof URL.");
+    }
+
+    proofUrlCache.set(path, {
+      url: data.signedUrl,
+      expiresAt: Date.now() + 14 * 60 * 1000
+    });
+
+    return data.signedUrl;
+  }
+
+  async function openProof(reference, title) {
+    try {
+      const url = await resolveProofUrl(reference);
+      showModal(title || "RESULT PROOF", `<img src="${esc(url)}" alt="Result proof" style="width:100%;max-height:70vh;object-fit:contain;border-radius:12px;border:1px solid rgba(64,168,255,.18);background:#02060b">`);
+    } catch (error) {
+      console.error(error);
+      showToast(friendlyError(error, "Could not open the proof image."), "error");
+    }
   }
 
   /* ========================= ADMIN LOGIN ========================= */
@@ -816,10 +865,14 @@
 
   function recruitmentCard(post) {
     const roles = Array.isArray(post.looking_for) ? post.looking_for.join(" • ") : (post.looking_for || "—");
+    const isPlayer = String(post.listing_type || "").toUpperCase() === "PLAYER_RECRUITMENT";
+    const visual = isPlayer
+      ? `<div class="mini-logo mini-placeholder">PL</div>`
+      : logo(post.team_logo_url, post.team_name || "7U");
     return `
       <article class="recruit-card">
         <div class="row-between">
-          <div class="identity">${logo(post.team_logo_url, post.team_name || post.player_ign || "7U")}<div><div class="name">${esc(post.team_name || post.player_ign || "PLAYER")}</div><div class="meta">FREE FIRE • ${esc(String(post.listing_type || "").replaceAll("_", " "))}</div></div></div>
+          <div class="identity">${visual}<div><div class="name">${esc(post.team_name || post.player_ign || "PLAYER")}</div><div class="meta">FREE FIRE • ${esc(String(post.listing_type || "").replaceAll("_", " "))}</div></div></div>
           <span class="badge badge-cyan">OPEN</span>
         </div>
         <div class="pills"><span class="pill">${esc(roles)}</span>${post.players_needed ? `<span class="pill">${esc(post.players_needed)} NEEDED</span>` : ""}</div>
@@ -986,17 +1039,22 @@
     const win = row.outcome === "WIN";
     const winner = row.winner_team_name || (win ? state.team?.name : row.opponent_team_name) || "Winner";
     const loser = row.loser_team_name || (!win ? state.team?.name : row.opponent_team_name) || "Loser";
+    const isMine = row.team_id === state.team?.id;
+    const canViewProof = state.isAdmin || isMine;
+    const formatLabel = row.challenge_format || row.format || "—";
+    const matchLabel = row.challenge_match_type || row.match_type || "MATCH";
+    const hasChallengeSnapshot = Boolean(row.challenge_id || row.challenge_team_name || row.challenge_format);
     return `<article class="result-record">
       <div class="result-record-top">
-        <div><div class="kicker">${row.challenge_id ? "CHALLENGE RESULT" : "LEGACY RESULT"}</div><div class="result-matchup"><strong>${esc(winner)}</strong><span>VS</span><strong>${esc(loser)}</strong></div></div>
+        <div><div class="kicker">${hasChallengeSnapshot ? "CHALLENGE RESULT" : "LEGACY RESULT"}</div><div class="result-matchup"><strong>${esc(winner)}</strong><span>VS</span><strong>${esc(loser)}</strong></div></div>
         <span class="badge ${row.status === "approved" ? "badge-green" : row.status === "rejected" ? "badge-danger" : "badge-warn"}">${esc(String(row.status || "pending").toUpperCase())}</span>
       </div>
       ${row.score ? `<div class="result-score-line"><span>SCORE</span><strong>${esc(row.score)}</strong><em>WIN +3 • LOSS −3</em></div>` : ""}
-      ${row.challenge_id ? `<div class="result-meta-grid"><div><small>CHALLENGE</small><b>${esc(row.match_type || "MATCH")}</b></div><div><small>FORMAT</small><b>${esc(row.format || "—")}</b></div><div><small>SUBMITTED</small><b>${esc(formatDate(row.created_at))}</b></div></div>` : ""}
-      <div class="result-proof-row">
-        ${row.proof_challenge_url ? `<button class="btn btn-dark btn-small" data-proof="${esc(row.proof_challenge_url)}" data-proof-title="ACCEPTED CHALLENGE PROOF">SCREENSHOT 1</button>` : ""}
-        ${row.proof_result_url || row.proof_url ? `<button class="btn btn-dark btn-small" data-proof="${esc(row.proof_result_url || row.proof_url)}" data-proof-title="MATCH RESULT PROOF">SCREENSHOT 2</button>` : ""}
-      </div>
+      ${hasChallengeSnapshot ? `<div class="result-meta-grid"><div><small>CHALLENGE</small><b>${esc(matchLabel)}</b></div><div><small>FORMAT</small><b>${esc(formatLabel)}</b></div><div><small>TIME</small><b>${esc(formatTimeOnly(row.challenge_match_time || row.played_at || row.created_at))}</b></div></div>` : ""}
+      ${canViewProof ? `<div class="result-proof-row">
+        ${row.proof_challenge_url ? `<button class="btn btn-dark btn-small" data-proof-ref="${esc(row.proof_challenge_url)}" data-proof-title="ACCEPTED CHALLENGE PROOF">SCREENSHOT 1</button>` : ""}
+        ${row.proof_result_url || row.proof_url ? `<button class="btn btn-dark btn-small" data-proof-ref="${esc(row.proof_result_url || row.proof_url)}" data-proof-title="MATCH RESULT PROOF">SCREENSHOT 2</button>` : ""}
+      </div>` : ""}
     </article>`;
   }
 
@@ -1098,11 +1156,11 @@
             <div class="proof-grid">
               <label>SCREENSHOT 1 — ACCEPTED CHALLENGE *
                 <input id="resultChallengeProof" type="file" accept="image/png,image/jpeg,image/webp" required>
-                <span class="hint">Proof that this was the challenge accepted for the match.</span>
+                <span class="hint">Private proof screenshot used only for Admin verification.</span>
               </label>
               <label>SCREENSHOT 2 — MATCH RESULT *
                 <input id="resultMatchProof" type="file" accept="image/png,image/jpeg,image/webp" required>
-                <span class="hint">Proof of the final match result / score.</span>
+                <span class="hint">Private proof screenshot used only for Admin verification.</span>
               </label>
             </div>
 
@@ -1158,8 +1216,9 @@
 
   async function submitResult(event) {
     event.preventDefault();
+    const uploadedProofPaths = [];
     try {
-      const team = state.team || await ensureApprovedTeam();
+      const team = await ensureApprovedTeam();
       const challengeId = document.getElementById("resultChallenge")?.value || "";
       const winnerTeamId = document.getElementById("resultWinnerTeam")?.value || "";
       const loserTeamId = document.getElementById("resultLoserTeam")?.value || "";
@@ -1196,8 +1255,10 @@
       const resultExt = matchProof.type === "image/webp" ? "webp" : matchProof.type === "image/png" ? "png" : "jpg";
       const challengeFile = new File([await challengeProof.arrayBuffer()], `challenge-proof-${stamp}.${challengeExt}`, {type: challengeProof.type});
       const resultFile = new File([await matchProof.arrayBuffer()], `result-proof-${stamp}.${resultExt}`, {type: matchProof.type});
-      const challengeProofUrl = await uploadFile(RESULT_BUCKET, state.user.id, challengeFile);
-      const resultProofUrl = await uploadFile(RESULT_BUCKET, state.user.id, resultFile);
+      const challengeProofUrl = await uploadFile(RESULT_BUCKET, state.user.id, challengeFile, { privateObject: true });
+      uploadedProofPaths.push(challengeProofUrl);
+      const resultProofUrl = await uploadFile(RESULT_BUCKET, state.user.id, resultFile, { privateObject: true });
+      uploadedProofPaths.push(resultProofUrl);
 
       const { error } = await supabase.rpc("submit_team_result", {
         p_team_id: team.id,
@@ -1214,6 +1275,17 @@
       showToast("Result submitted successfully. Waiting for Admin approval.");
       await loadMemberSection();
     } catch (error) {
+      // If the database submission fails after proof uploads, remove the
+      // orphaned private objects owned by the current user.
+      if (uploadedProofPaths.length && state.user?.id) {
+        try {
+          await Promise.all(uploadedProofPaths.map((path) =>
+            supabase.storage.from(RESULT_BUCKET).remove([path])
+          ));
+        } catch (cleanupError) {
+          console.warn("Proof cleanup failed:", cleanupError);
+        }
+      }
       console.error(error);
       showToast(friendlyError(error, "Could not submit result."), "error");
     }
@@ -1392,14 +1464,14 @@
 
   function adminPointsContent() {
     const rows = state.adminPoints || [];
-    return `<div class="panel"><div class="panel-head"><div><div class="kicker">MANUAL CONTROL</div><h3>TEAM POINT MANAGEMENT</h3><div class="subtle">Administrators can increase or decrease SOLO, DUO and SQUAD points without changing verified match history. Positive values add points; negative values subtract points.</div></div><span class="badge badge-blue">ADMIN ONLY</span></div><div class="admin-warning" style="margin-bottom:12px"><b>POINT SAFETY:</b> Verified result points stay untouched. Only the separate Admin Adjustment can be changed here. The total ranking is recalculated automatically.</div><div class="table-shell"><table style="min-width:1120px"><thead><tr><th>Team</th><th>SOLO</th><th>DUO</th><th>SQUAD</th><th>ALL FORMATS</th><th>Control</th></tr></thead><tbody>${rows.map((row) => `<tr><td><div class="identity">${logo(row.logo_url, row.team_name)}<div><strong>${esc(row.team_name)}</strong><div class="meta">IGL: ${esc(row.igl_name || "—")}</div><span class="badge ${row.team_status === "active" ? "badge-green" : row.team_status === "banned" ? "badge-danger" : "badge-warn"}" style="margin-top:5px">${esc(row.team_status || "—")}</span></div></div></td><td><strong>${esc(row.solo_total)}</strong><div class="meta">VERIFIED ${esc(row.solo_verified)} • CARRY ${esc(row.solo_carry)} • ADMIN ${esc(row.solo_adjustment)}</div></td><td><strong>${esc(row.duo_total)}</strong><div class="meta">VERIFIED ${esc(row.duo_verified)} • CARRY ${esc(row.duo_carry)} • ADMIN ${esc(row.duo_adjustment)}</div></td><td><strong>${esc(row.squad_total)}</strong><div class="meta">VERIFIED ${esc(row.squad_verified)} • CARRY ${esc(row.squad_carry)} • ADMIN ${esc(row.squad_adjustment)}</div></td><td><span class="badge badge-cyan">${esc(row.total_points)} PTS</span></td><td><button class="btn btn-primary btn-small" data-edit-points="${esc(row.team_id)}">EDIT POINTS</button></td></tr>`).join("") || `<tr><td colspan="6"><div class="empty">No teams available.</div></td></tr>`}</tbody></table></div></div>`;
+    return `<div class="panel"><div class="panel-head"><div><div class="kicker">MANUAL CONTROL</div><h3>TEAM POINT MANAGEMENT</h3><div class="subtle">Point controls are available inside each Team &gt; ⋮ &gt; EDIT panel. Verified match history is never rewritten by an Admin adjustment.</div></div><span class="badge badge-blue">ADMIN ONLY</span></div><div class="admin-warning" style="margin-bottom:12px"><b>POINT SAFETY:</b> Verified result points stay untouched. Only the separate Admin Adjustment can be changed here. The total ranking is recalculated automatically.</div><div class="table-shell"><table style="min-width:1120px"><thead><tr><th>Team</th><th>SOLO</th><th>DUO</th><th>SQUAD</th><th>ALL FORMATS</th><th>Control</th></tr></thead><tbody>${rows.map((row) => `<tr><td><div class="identity">${logo(row.logo_url, row.team_name)}<div><strong>${esc(row.team_name)}</strong><div class="meta">IGL: ${esc(row.igl_name || "—")}</div><span class="badge ${row.team_status === "active" ? "badge-green" : row.team_status === "banned" ? "badge-danger" : "badge-warn"}" style="margin-top:5px">${esc(row.team_status || "—")}</span></div></div></td><td><strong>${esc(row.solo_total)}</strong><div class="meta">VERIFIED ${esc(row.solo_verified)} • CARRY ${esc(row.solo_carry)} • ADMIN ${esc(row.solo_adjustment)}</div></td><td><strong>${esc(row.duo_total)}</strong><div class="meta">VERIFIED ${esc(row.duo_verified)} • CARRY ${esc(row.duo_carry)} • ADMIN ${esc(row.duo_adjustment)}</div></td><td><strong>${esc(row.squad_total)}</strong><div class="meta">VERIFIED ${esc(row.squad_verified)} • CARRY ${esc(row.squad_carry)} • ADMIN ${esc(row.squad_adjustment)}</div></td><td><span class="badge badge-cyan">${esc(row.total_points)} PTS</span></td><td><button class="btn btn-primary btn-small" data-edit-points="${esc(row.team_id)}">EDIT POINTS</button></td></tr>`).join("") || `<tr><td colspan="6"><div class="empty">No teams available.</div></td></tr>`}</tbody></table></div></div>`;
   }
 
   function openAdminPointsEdit(teamId) {
     const row = state.adminPoints.find((item) => item.team_id === teamId);
     if (!row) return showToast("Team points record not found.", "error");
 
-    showModal("EDIT TEAM POINTS", `<form id="adminPointsEditForm"><div class="access-note" style="margin-bottom:12px"><b>${esc(row.team_name)}</b><br>Enter a positive number to ADD points, or a negative number to REMOVE points. Verified results are never edited by this control.</div><div class="field-grid"><label>SOLO ADMIN CHANGE<input id="pointsSoloDelta" type="number" step="1" value="0" placeholder="+5 or -5"><div class="hint">Current Admin Adjustment: ${esc(row.solo_adjustment)}</div></label><label>DUO ADMIN CHANGE<input id="pointsDuoDelta" type="number" step="1" value="0" placeholder="+5 or -5"><div class="hint">Current Admin Adjustment: ${esc(row.duo_adjustment)}</div></label><label>SQUAD ADMIN CHANGE<input id="pointsSquadDelta" type="number" step="1" value="0" placeholder="+5 or -5"><div class="hint">Current Admin Adjustment: ${esc(row.squad_adjustment)}</div></label><div class="info-box"><small>CURRENT TOTAL</small><strong>SOLO ${esc(row.solo_total)} • DUO ${esc(row.duo_total)} • SQUAD ${esc(row.squad_total)}</strong></div></div><div class="auth-actions" style="justify-content:flex-start"><button class="btn btn-primary" type="submit">APPLY POINT CHANGES</button><button class="btn btn-dark" id="adminPointsCancel" type="button">CANCEL</button></div></form>`);
+    showModal("EDIT TEAM POINTS", `<form id="adminPointsEditForm"><div class="access-note" style="margin-bottom:12px"><b>${esc(row.team_name)}</b><br>Enter a positive number to ADD points, or a negative number to REMOVE points. Verified results are never edited by this control.</div><div class="field-grid"><label>SOLO ADMIN CHANGE<input id="pointsSoloDelta" type="number" step="1" min="-2" max="2" value="0" placeholder="+1 / -1 / +2 / -2"><div class="hint">Current Admin Adjustment: ${esc(row.solo_adjustment)}</div></label><label>DUO ADMIN CHANGE<input id="pointsDuoDelta" type="number" step="1" min="-2" max="2" value="0" placeholder="+1 / -1 / +2 / -2"><div class="hint">Current Admin Adjustment: ${esc(row.duo_adjustment)}</div></label><label>SQUAD ADMIN CHANGE<input id="pointsSquadDelta" type="number" step="1" min="-2" max="2" value="0" placeholder="+1 / -1 / +2 / -2"><div class="hint">Current Admin Adjustment: ${esc(row.squad_adjustment)}</div></label><div class="info-box"><small>CURRENT TOTAL</small><strong>SOLO ${esc(row.solo_total)} • DUO ${esc(row.duo_total)} • SQUAD ${esc(row.squad_total)}</strong></div></div><div class="auth-actions" style="justify-content:flex-start"><button class="btn btn-primary" type="submit">APPLY POINT CHANGES</button><button class="btn btn-dark" id="adminPointsCancel" type="button">CANCEL</button></div></form>`);
     document.getElementById("adminPointsEditForm")?.addEventListener("submit", (event) => saveAdminPointsEdit(event, row));
     document.getElementById("adminPointsCancel")?.addEventListener("click", closeModal);
   }
@@ -1412,7 +1484,7 @@
       const squad = Number(document.getElementById("pointsSquadDelta")?.value || 0);
       if (![solo, duo, squad].every(Number.isInteger)) throw new Error("Point changes must be whole numbers.");
       if (solo === 0 && duo === 0 && squad === 0) throw new Error("Enter at least one point change.");
-      if (Math.abs(solo) > 1000 || Math.abs(duo) > 1000 || Math.abs(squad) > 1000) throw new Error("A single admin point change cannot exceed 1000 points.");
+      if ([solo, duo, squad].some((value) => value < -2 || value > 2)) throw new Error("Each Admin point change must be -2, -1, +1 or +2.");
 
       const summary = [`SOLO ${solo >= 0 ? "+" : ""}${solo}`, `DUO ${duo >= 0 ? "+" : ""}${duo}`, `SQUAD ${squad >= 0 ? "+" : ""}${squad}`].filter((value) => !/ 0$/.test(value)).join(" • ");
       if (!confirm(`Apply point changes to ${row.team_name}?\n\n${summary}`)) return;
@@ -1421,7 +1493,8 @@
         p_team_id: row.team_id,
         p_solo_delta: solo,
         p_duo_delta: duo,
-        p_squad_delta: squad
+        p_squad_delta: squad,
+        p_reason: document.getElementById("pointsReason")?.value.trim() || null
       });
       if (error) throw error;
 
@@ -1531,7 +1604,7 @@
         <div class="auth-actions" style="justify-content:flex-start"><button class="btn btn-dark btn-small" type="button" data-save-member-inline="${esc(m.user_id)}" data-member-role="${esc(m.role)}">SAVE MEMBER</button></div>
       </div>`).join("");
 
-      showModal("EDIT TEAM", `<form id="adminTeamEditForm"><div class="identity" style="margin-bottom:12px">${logo(detail.logo_url, detail.team_name, "profile-logo")}<div><strong style="font-family:'Barlow Condensed',sans-serif;font-size:24px">${esc(detail.team_name)}</strong><div class="meta">Edit team identity, member contact/details and points.</div></div></div><div class="field-grid"><label>TEAM NAME *<input id="adminTeamName" maxlength="50" value="${esc(detail.team_name || "")}" required></label><label>IGL NAME *<input id="adminIglName" maxlength="60" value="${esc(detail.igl_name || "")}" required></label><label>TEAM LOGO — OPTIONAL<input id="adminTeamLogo" type="file" accept="image/png,image/jpeg,image/webp"><div class="hint">Leave empty to keep current logo.</div></label><div class="info-box"><small>TEAM EMAIL</small><strong>Emails are shown per member and are managed by Auth.</strong></div></div><div class="kicker" style="margin:14px 0 7px">MEMBERS — CONTACT / ROLE / REMOVE</div>${memberEditors || `<div class="empty">No members found.</div>`}<div class="kicker" style="margin:14px 0 7px">POINT ADJUSTMENT</div><div class="access-note"><b>POINTS:</b> Enter +1 / +2 to add or -1 / -2 to subtract. Verified match results are never edited. Changes are separate Admin Adjustments.</div><div class="field-grid"><label>SOLO CHANGE<input id="pointsSoloDelta" type="number" step="1" value="0" placeholder="+1 / -1"><div class="hint">Current SOLO total: ${esc(detail.solo_points ?? 0)}</div><div class="quick-points"><button type="button" data-point-input="pointsSoloDelta" data-point-delta="1">+1</button><button type="button" data-point-input="pointsSoloDelta" data-point-delta="2">+2</button><button type="button" data-point-input="pointsSoloDelta" data-point-delta="-1">−1</button><button type="button" data-point-input="pointsSoloDelta" data-point-delta="-2">−2</button></div></label><label>DUO CHANGE<input id="pointsDuoDelta" type="number" step="1" value="0" placeholder="+1 / -1"><div class="hint">Current DUO total: ${esc(detail.duo_points ?? 0)}</div><div class="quick-points"><button type="button" data-point-input="pointsDuoDelta" data-point-delta="1">+1</button><button type="button" data-point-input="pointsDuoDelta" data-point-delta="2">+2</button><button type="button" data-point-input="pointsDuoDelta" data-point-delta="-1">−1</button><button type="button" data-point-input="pointsDuoDelta" data-point-delta="-2">−2</button></div></label><label>SQUAD CHANGE<input id="pointsSquadDelta" type="number" step="1" value="0" placeholder="+1 / -1"><div class="hint">Current SQUAD total: ${esc(detail.squad_points ?? 0)}</div><div class="quick-points"><button type="button" data-point-input="pointsSquadDelta" data-point-delta="1">+1</button><button type="button" data-point-input="pointsSquadDelta" data-point-delta="2">+2</button><button type="button" data-point-input="pointsSquadDelta" data-point-delta="-1">−1</button><button type="button" data-point-input="pointsSquadDelta" data-point-delta="-2">−2</button></div></label></div><div class="auth-actions" style="justify-content:flex-start"><button class="btn btn-primary" type="submit">SAVE TEAM + POINTS</button><button class="btn btn-dark" id="adminEditCancel" type="button">CANCEL</button></div></form>`);
+      showModal("EDIT TEAM", `<form id="adminTeamEditForm"><div class="identity" style="margin-bottom:12px">${logo(detail.logo_url, detail.team_name, "profile-logo")}<div><strong style="font-family:'Barlow Condensed',sans-serif;font-size:24px">${esc(detail.team_name)}</strong><div class="meta">Edit team identity, member contact/details and points.</div></div></div><div class="field-grid"><label>TEAM NAME *<input id="adminTeamName" maxlength="50" value="${esc(detail.team_name || "")}" required></label><label>IGL NAME *<input id="adminIglName" maxlength="60" value="${esc(detail.igl_name || "")}" required></label><label>TEAM LOGO — OPTIONAL<input id="adminTeamLogo" type="file" accept="image/png,image/jpeg,image/webp"><div class="hint">Leave empty to keep current logo.</div></label><div class="info-box"><small>TEAM EMAIL</small><strong>Emails are shown per member and are managed by Auth.</strong></div></div><div class="kicker" style="margin:14px 0 7px">MEMBERS — CONTACT / ROLE / REMOVE</div>${memberEditors || `<div class="empty">No members found.</div>`}<div class="kicker" style="margin:14px 0 7px">POINT ADJUSTMENT</div><div class="access-note"><b>POINTS:</b> Enter +1 / +2 to add or -1 / -2 to subtract. Verified match results are never edited. Changes are separately audited Admin Adjustments.</div><div class="field-grid"><label>SOLO CHANGE<input id="pointsSoloDelta" type="number" step="1" min="-2" max="2" value="0" placeholder="+1 / -1 / +2 / -2"><div class="hint">Current SOLO total: ${esc(detail.solo_points ?? 0)}</div><div class="quick-points"><button type="button" data-point-input="pointsSoloDelta" data-point-delta="1">+1</button><button type="button" data-point-input="pointsSoloDelta" data-point-delta="2">+2</button><button type="button" data-point-input="pointsSoloDelta" data-point-delta="-1">−1</button><button type="button" data-point-input="pointsSoloDelta" data-point-delta="-2">−2</button></div></label><label>DUO CHANGE<input id="pointsDuoDelta" type="number" step="1" min="-2" max="2" value="0" placeholder="+1 / -1 / +2 / -2"><div class="hint">Current DUO total: ${esc(detail.duo_points ?? 0)}</div><div class="quick-points"><button type="button" data-point-input="pointsDuoDelta" data-point-delta="1">+1</button><button type="button" data-point-input="pointsDuoDelta" data-point-delta="2">+2</button><button type="button" data-point-input="pointsDuoDelta" data-point-delta="-1">−1</button><button type="button" data-point-input="pointsDuoDelta" data-point-delta="-2">−2</button></div></label><label>SQUAD CHANGE<input id="pointsSquadDelta" type="number" step="1" min="-2" max="2" value="0" placeholder="+1 / -1 / +2 / -2"><div class="hint">Current SQUAD total: ${esc(detail.squad_points ?? 0)}</div><div class="quick-points"><button type="button" data-point-input="pointsSquadDelta" data-point-delta="1">+1</button><button type="button" data-point-input="pointsSquadDelta" data-point-delta="2">+2</button><button type="button" data-point-input="pointsSquadDelta" data-point-delta="-1">−1</button><button type="button" data-point-input="pointsSquadDelta" data-point-delta="-2">−2</button></div></label><label class="full">REASON (OPTIONAL)<input id="pointsReason" maxlength="180" placeholder="Why are these points being adjusted?"></label></div><div class="auth-actions" style="justify-content:flex-start"><button class="btn btn-primary" type="submit">SAVE TEAM + POINTS</button><button class="btn btn-dark" id="adminEditCancel" type="button">CANCEL</button></div></form>`);
 
       document.getElementById("adminEditCancel")?.addEventListener("click", closeModal);
       document.getElementById("adminTeamEditForm")?.addEventListener("submit", (event) => saveCombinedAdminTeamEdit(event, detail));
@@ -1562,23 +1635,23 @@
         logoUrl = await uploadFile(LOGO_BUCKET, state.user.id, file);
       }
 
-      const { error: teamError } = await supabase.rpc("admin_edit_team", {
-        p_team_id: detail.team_id,
-        p_team_name: teamName,
-        p_igl_name: iglName,
-        p_logo_url: logoUrl
-      });
-      if (teamError) throw teamError;
-
       const solo = Number(document.getElementById("pointsSoloDelta")?.value || 0);
       const duo = Number(document.getElementById("pointsDuoDelta")?.value || 0);
       const squad = Number(document.getElementById("pointsSquadDelta")?.value || 0);
       if (![solo, duo, squad].every(Number.isInteger)) throw new Error("Point changes must be whole numbers.");
-      if (Math.abs(solo) > 1000 || Math.abs(duo) > 1000 || Math.abs(squad) > 1000) throw new Error("A single point change cannot exceed 1000 per format.");
-      if (solo || duo || squad) {
-        const { error: pointsError } = await supabase.rpc("admin_adjust_team_points", { p_team_id: detail.team_id, p_solo_delta: solo, p_duo_delta: duo, p_squad_delta: squad });
-        if (pointsError) throw pointsError;
-      }
+      if ([solo, duo, squad].some((value) => value < -2 || value > 2)) throw new Error("Each Admin point change must be -2, -1, +1 or +2.");
+
+      const { error: saveError } = await supabase.rpc("admin_edit_team_and_points", {
+        p_team_id: detail.team_id,
+        p_team_name: teamName,
+        p_igl_name: iglName,
+        p_logo_url: logoUrl,
+        p_solo_delta: solo,
+        p_duo_delta: duo,
+        p_squad_delta: squad,
+        p_reason: document.getElementById("pointsReason")?.value.trim() || null
+      });
+      if (saveError) throw saveError;
 
       closeModal();
       showToast("Team information and point changes saved successfully.");
@@ -1639,10 +1712,14 @@
 
   function adminResultsContent() {
     const teamName = (id) => state.teams.find((team) => team.id === id)?.name || id || "—";
-    return `<div class="panel"><div class="panel-head"><div><div class="kicker">VERIFY</div><h3>MATCH RESULTS</h3><div class="subtle">Admin approval activates +3 for the Winner and −3 for the Loser in permanent rankings.</div></div><span class="badge badge-blue">WIN +3 • LOSS −3</span></div><div class="table-shell"><table><thead><tr><th>Challenge</th><th>Winner</th><th>Loser</th><th>Score</th><th>Proof</th><th>Status</th><th>Control</th></tr></thead><tbody>${state.results.map((row) => {
+    return `<div class="panel"><div class="panel-head"><div><div class="kicker">VERIFY</div><h3>MATCH RESULTS</h3><div class="subtle">Admin approval activates +3 for the Winner and −3 for the Loser in the selected permanent format ranking.</div></div><span class="badge badge-blue">WIN +3 • LOSS −3</span></div><div class="table-shell"><table><thead><tr><th>Challenge</th><th>Winner</th><th>Loser</th><th>Score</th><th>Proof</th><th>Status</th><th>Control</th></tr></thead><tbody>${state.results.map((row) => {
       const winner = row.winner_team_name || (row.outcome === "WIN" ? teamName(row.team_id) : row.opponent_team_name) || "—";
       const loser = row.loser_team_name || (row.outcome === "LOSS" ? teamName(row.team_id) : row.opponent_team_name) || "—";
-      return `<tr><td>${esc(row.challenge_id ? `${row.match_type || "MATCH"} • ${row.format || "—"}` : "Legacy result")}</td><td><strong>${esc(winner)}</strong></td><td><strong>${esc(loser)}</strong></td><td><span class="badge badge-cyan">${esc(row.score || "—")}</span></td><td>${row.proof_challenge_url ? `<button class="btn btn-dark btn-small" data-proof="${esc(row.proof_challenge_url)}" data-proof-title="CHALLENGE PROOF">S1</button> ` : ""}${row.proof_result_url || row.proof_url ? `<button class="btn btn-dark btn-small" data-proof="${esc(row.proof_result_url || row.proof_url)}" data-proof-title="RESULT PROOF">S2</button>` : "—"}</td><td>${esc(row.status)}</td><td>${row.status === "pending" ? `<button class="btn btn-green btn-small" data-review="${esc(row.id)}" data-next="approved">APPROVE</button> <button class="btn btn-danger btn-small" data-review="${esc(row.id)}" data-next="rejected">REJECT</button>` : "—"}</td></tr>`;
+      const hasSnapshot = Boolean(row.challenge_team_name || row.challenge_id || row.challenge_format);
+      const challengeLabel = hasSnapshot
+        ? `${row.challenge_match_type || row.match_type || "MATCH"} • ${row.challenge_format || row.format || "—"}`
+        : "Legacy result";
+      return `<tr><td>${esc(challengeLabel)}</td><td><strong>${esc(winner)}</strong></td><td><strong>${esc(loser)}</strong></td><td><span class="badge badge-cyan">${esc(row.score || "—")}</span></td><td>${row.proof_challenge_url ? `<button class="btn btn-dark btn-small" data-proof-ref="${esc(row.proof_challenge_url)}" data-proof-title="CHALLENGE PROOF">S1</button> ` : ""}${row.proof_result_url || row.proof_url ? `<button class="btn btn-dark btn-small" data-proof-ref="${esc(row.proof_result_url || row.proof_url)}" data-proof-title="RESULT PROOF">S2</button>` : "—"}</td><td>${esc(row.status)}</td><td>${row.status === "pending" ? `<button class="btn btn-green btn-small" data-review="${esc(row.id)}" data-next="approved">APPROVE</button> <button class="btn btn-danger btn-small" data-review="${esc(row.id)}" data-next="rejected">REJECT</button>` : "—"}</td></tr>`;
     }).join("") || `<tr><td colspan="7">No results.</td></tr>`}</tbody></table></div></div>`;
   }
 
@@ -1830,18 +1907,14 @@
       if (!displayName) throw new Error("Member name is required.");
       if (phone && !/^\+92\d{10}$/.test(phone)) throw new Error("Enter a valid Pakistan mobile number.");
 
-      const { error } = await supabase.rpc("admin_edit_member", {
+      const { error } = await supabase.rpc("admin_edit_member_and_status", {
         p_user_id: member.id,
         p_display_name: displayName,
         p_phone: phone,
-        p_role: role
+        p_role: role,
+        p_status: status
       });
       if (error) throw error;
-
-      if (status !== member.status) {
-        const statusResult = await supabase.rpc("admin_set_member_status", { p_user_id: member.id, p_status: status });
-        if (statusResult.error) throw statusResult.error;
-      }
 
       closeModal();
       showToast("Member information updated successfully.");
@@ -1866,8 +1939,8 @@
       window.open(`https://wa.me/${phone.replace("+", "")}`, "_blank", "noopener,noreferrer");
     }));
 
-    document.querySelectorAll("[data-proof]").forEach((button) => button.addEventListener("click", () => {
-      showModal(button.dataset.proofTitle || "RESULT PROOF", `<img src="${esc(button.dataset.proof)}" alt="Result proof" style="width:100%;max-height:70vh;object-fit:contain;border-radius:12px;border:1px solid rgba(64,168,255,.18);background:#02060b">`);
+    document.querySelectorAll("[data-proof-ref]").forEach((button) => button.addEventListener("click", async () => {
+      await openProof(button.dataset.proofRef, button.dataset.proofTitle || "RESULT PROOF");
     }));
 
     document.querySelectorAll("[data-accept-challenge]").forEach((button) => button.addEventListener("click", async () => {
