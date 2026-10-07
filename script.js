@@ -55,7 +55,9 @@
     registrations: [],
     teams: [],
     adminPoints: [],
-    teamDetails: null
+    teamDetails: null,
+    resultChallengeId: "",
+    resultTeams: []
   };
 
   const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (m) => ({
@@ -842,7 +844,6 @@
   function challengeCard(challenge) {
     const ownTeam = state.team?.id && challenge.team_id === state.team.id;
     const accepted = challenge.status === "accepted";
-    const acceptedByMe = challenge.accepted_by_team_id && state.team?.id === challenge.accepted_by_team_id;
     return `
       <article class="challenge-card">
         <div class="row-between">
@@ -852,13 +853,12 @@
         <div class="pills"><span class="pill">${esc(challenge.match_type)}</span><span class="pill">${esc(challenge.format)}</span><span class="pill">EVERYONE</span></div>
         <div class="info-row"><div class="info-box"><small>Match Time</small><strong>${esc(formatTimeOnly(challenge.match_time))}</strong></div><div class="info-box"><small>Contact</small><strong>${esc(challenge.contact || "—")}</strong></div></div>
         ${challenge.notes ? `<div class="note">${esc(challenge.notes)}</div>` : ""}
-        ${accepted ? `<div class="note" style="border-color:rgba(45,224,255,.18);color:#9eeaff;background:rgba(45,224,255,.04)"><b>ACCEPTED BY:</b> ${esc(challenge.accepted_by_team_name || "Another Team")}</div>` : ""}
+        ${accepted && challenge.accepted_by_team_name ? `<div class="note" style="border-color:rgba(45,224,255,.18);color:#9eeaff;background:rgba(45,224,255,.04)"><b>LEGACY ACCEPTED BY:</b> ${esc(challenge.accepted_by_team_name)}</div>` : ""}
         <div class="card-actions">
           <button class="btn btn-primary btn-small" data-wa="${esc(challenge.contact || "")}">CONTACT</button>
           <button class="btn btn-dark btn-small" data-json='${esc(JSON.stringify(challenge))}'>DETAILS</button>
-          ${!ownTeam && !accepted ? `<button class="btn btn-cyan btn-small" data-accept-challenge="${esc(challenge.id)}">ACCEPT CHALLENGE</button>` : ""}
-          ${acceptedByMe ? `<span class="badge badge-cyan">YOUR ACCEPTED MATCH</span>` : ""}
-          ${ownTeam && !accepted ? `<span class="badge badge-blue">YOUR CHALLENGE</span>` : ""}
+          <button class="btn btn-cyan btn-small" data-select-result="${esc(challenge.id)}">SELECT FOR RESULT</button>
+          ${ownTeam ? `<span class="badge badge-blue">YOUR CHALLENGE</span>` : ""}
         </div>
       </article>`;
   }
@@ -1013,6 +1013,13 @@
     return data || [];
   }
 
+  async function getResultTeams() {
+    const { data, error } = await supabase.rpc("get_result_teams");
+    if (error) throw error;
+    state.resultTeams = data || [];
+    return state.resultTeams;
+  }
+
   async function getMyResults() {
     const { data, error } = await supabase
       .from("team_match_results")
@@ -1052,7 +1059,7 @@
       ${row.score ? `<div class="result-score-line"><span>SCORE</span><strong>${esc(row.score)}</strong><em>WIN +3 • LOSS −3</em></div>` : ""}
       ${hasChallengeSnapshot ? `<div class="result-meta-grid"><div><small>CHALLENGE</small><b>${esc(matchLabel)}</b></div><div><small>FORMAT</small><b>${esc(formatLabel)}</b></div><div><small>TIME</small><b>${esc(formatTimeOnly(row.challenge_match_time || row.played_at || row.created_at))}</b></div></div>` : ""}
       ${canViewProof ? `<div class="result-proof-row">
-        ${row.proof_challenge_url ? `<button class="btn btn-dark btn-small" data-proof-ref="${esc(row.proof_challenge_url)}" data-proof-title="ACCEPTED CHALLENGE PROOF">SCREENSHOT 1</button>` : ""}
+        ${row.proof_challenge_url ? `<button class="btn btn-dark btn-small" data-proof-ref="${esc(row.proof_challenge_url)}" data-proof-title="CHALLENGE PROOF">SCREENSHOT 1</button>` : ""}
         ${row.proof_result_url || row.proof_url ? `<button class="btn btn-dark btn-small" data-proof-ref="${esc(row.proof_result_url || row.proof_url)}" data-proof-title="MATCH RESULT PROOF">SCREENSHOT 2</button>` : ""}
       </div>` : ""}
     </article>`;
@@ -1060,8 +1067,9 @@
 
   function challengeOptionLabel(challenge) {
     const posted = challenge.team_name || "Team";
-    const accepted = challenge.accepted_by_team_name || "Opponent";
-    return `${posted}  vs  ${accepted} • ${challenge.match_type} • ${challenge.format} • ${formatTimeOnly(challenge.match_time)}`;
+    const accepted = challenge.accepted_by_team_name;
+    const opponentPart = accepted ? ` vs ${accepted}` : " • OPEN";
+    return `${posted}${opponentPart} • ${challenge.match_type} • ${challenge.format} • ${formatTimeOnly(challenge.match_time)}`;
   }
 
   function challengeById(challenges, id) {
@@ -1072,67 +1080,102 @@
     const box = document.getElementById("resultChallengeDetails");
     const winner = document.getElementById("resultWinnerTeam");
     const loser = document.getElementById("resultLoserTeam");
+    const resultFormat = document.getElementById("resultFormat");
     if (!box || !winner || !loser) return;
 
     if (!challenge) {
-      box.innerHTML = `<div class="result-empty-state"><strong>NO CHALLENGE SELECTED</strong><span>Select an accepted practice challenge to continue.</span></div>`;
+      box.innerHTML = `<div class="result-empty-state"><strong>NO CHALLENGE SELECTED</strong><span>Select a practice challenge. No acceptance is required.</span></div>`;
       winner.innerHTML = `<option value="">Select winner team</option>`;
       loser.innerHTML = `<option value="">Select loser team</option>`;
-      const resultFormat = document.getElementById("resultFormat");
       if (resultFormat) resultFormat.value = "";
       return;
     }
 
-    const teams = [
-      { id: challenge.team_id, name: challenge.team_name },
-      { id: challenge.accepted_by_team_id, name: challenge.accepted_by_team_name }
-    ].filter((item, index, arr) => item.id && arr.findIndex((x) => x.id === item.id) === index);
+    const activeTeams = Array.isArray(state.resultTeams) ? state.resultTeams : [];
+    const uniqueTeams = new Map();
+    activeTeams.forEach((team) => {
+      if (team?.id && team?.name) uniqueTeams.set(team.id, team.name);
+    });
+    if (challenge.team_id && challenge.team_name) uniqueTeams.set(challenge.team_id, challenge.team_name);
+    if (challenge.accepted_by_team_id && challenge.accepted_by_team_name) {
+      uniqueTeams.set(challenge.accepted_by_team_id, challenge.accepted_by_team_name);
+    }
+
+    const options = [...uniqueTeams.entries()]
+      .map(([id, name]) => `<option value="${esc(id)}">${esc(name)}</option>`)
+      .join("");
+
+    const legacyOpponent = challenge.accepted_by_team_id
+      ? ` <span>VS</span> ${esc(challenge.accepted_by_team_name || "Opponent")}`
+      : "";
 
     box.innerHTML = `
-      <div class="result-challenge-head"><div><small>SELECTED CHALLENGE</small><strong>${esc(challenge.team_name)} <span>VS</span> ${esc(challenge.accepted_by_team_name || "Opponent")}</strong></div><span class="badge badge-cyan">ACCEPTED</span></div>
-      <div class="result-meta-grid"><div><small>MATCH</small><b>${esc(challenge.match_type)}</b></div><div><small>FORMAT</small><b>${esc(challenge.format)}</b></div><div><small>TIME</small><b>${esc(formatTimeOnly(challenge.match_time))}</b></div></div>`;
+      <div class="result-challenge-head">
+        <div>
+          <small>SELECTED PRACTICE CHALLENGE</small>
+          <strong>${esc(challenge.team_name || "Team")}${legacyOpponent}</strong>
+        </div>
+        <span class="badge ${challenge.status === "accepted" ? "badge-cyan" : "badge-green"}">${esc(String(challenge.status || "open").toUpperCase())}</span>
+      </div>
+      <div class="result-meta-grid">
+        <div><small>MATCH TYPE</small><b>${esc(challenge.match_type || "—")}</b></div>
+        <div><small>FORMAT</small><b>${esc(String(challenge.format || "—").toUpperCase())}</b></div>
+        <div><small>MATCH TIME</small><b>${esc(formatTimeOnly(challenge.match_time))}</b></div>
+      </div>
+      <div class="result-meta-grid" style="margin-top:8px">
+        <div><small>CHALLENGE BY</small><b>${esc(challenge.team_name || "—")}</b></div>
+        <div><small>CONTACT</small><b>${esc(challenge.contact || "—")}</b></div>
+        <div><small>NOTES</small><b>${esc(challenge.notes || "—")}</b></div>
+      </div>`;
 
-    const resultFormat = document.getElementById("resultFormat");
-    if (resultFormat) resultFormat.value = String(challenge.format || "").toUpperCase();
+    if (resultFormat) {
+      resultFormat.value = String(challenge.format || "").toUpperCase();
+      resultFormat.disabled = false;
+    }
 
-    const options = teams.map((team) => `<option value="${esc(team.id)}">${esc(team.name)}</option>`).join("");
     winner.innerHTML = `<option value="">Select winner team</option>${options}`;
     loser.innerHTML = `<option value="">Select loser team</option>${options}`;
 
-    const me = state.team?.id;
-    if (me && teams.length === 2) {
-      const other = teams.find((team) => team.id !== me);
-      winner.value = me;
-      loser.value = other?.id || "";
-    }
+    // Safety/UX: never guess the winner or loser. The submitter must explicitly choose both.
+    winner.value = "";
+    loser.value = "";
   }
 
   async function resultsPage(challenges = null) {
     const [mine, verified] = await Promise.all([getMyResults(), getVerifiedResults()]);
     if (!Array.isArray(challenges)) challenges = await getMyResultChallenges();
+    await getResultTeams();
+
     const noChallenges = !challenges.length;
+    const preselectedId = state.resultChallengeId || "";
+
     return `
       <div class="container">
-        <div style="margin-bottom:16px"><div class="kicker">SUBMIT • VERIFY • RANK</div><h1 class="title">MATCH RESULTS</h1><div class="desc">Choose the accepted challenge first, record the winner, loser and final score, then attach both proof screenshots. <b>Only after Admin approval:</b> Winner +3 • Loser −3.</div></div>
+        <div style="margin-bottom:16px">
+          <div class="kicker">SUBMIT • VERIFY • RANK</div>
+          <h1 class="title">MATCH RESULTS</h1>
+          <div class="desc">Select the practice challenge that was played. <b>Challenge acceptance is not required.</b> Winner, Loser and final score are entered here; the selected challenge's Match Type, Format, Time, Contact and Notes are carried into the result automatically. <b>Only after Admin approval:</b> Winner +3 • Loser −3.</div>
+        </div>
 
         <section class="panel result-submit-panel">
-          <div class="panel-head"><div><div class="kicker">STEP-BY-STEP SUBMISSION</div><h3>TEAM RESULT</h3></div><span class="badge badge-blue">ADMIN APPROVAL</span></div>
+          <div class="panel-head"><div><div class="kicker">FAST RESULT FLOW</div><h3>TEAM RESULT</h3></div><span class="badge badge-blue">NO ACCEPT NEEDED</span></div>
           <div class="result-steps">
-            <div class="result-step"><span>01</span><div><b>SELECT CHALLENGE</b><small>Choose the accepted practice challenge.</small></div></div>
-            <div class="result-step"><span>02</span><div><b>ENTER RESULT</b><small>Winner • Loser • Final score.</small></div></div>
-            <div class="result-step"><span>03</span><div><b>ADD PROOF</b><small>Two screenshots for verification.</small></div></div>
+            <div class="result-step"><span>01</span><div><b>SELECT CHALLENGE</b><small>Choose your own or another team's challenge.</small></div></div>
+            <div class="result-step"><span>02</span><div><b>SET WINNER / LOSER</b><small>Select both guild names and enter the final score.</small></div></div>
+            <div class="result-step"><span>03</span><div><b>ADD PROOF</b><small>Two screenshots for Admin verification.</small></div></div>
           </div>
 
           <form id="resultForm">
-            <label class="full">ACCEPTED CHALLENGE *
+            <label class="full">PRACTICE CHALLENGE *
               <select id="resultChallenge" ${noChallenges ? "disabled" : "required"}>
-                <option value="">${noChallenges ? "No accepted challenges available" : "Select an accepted challenge"}</option>
-                ${challenges.map((challenge) => `<option value="${esc(challenge.id)}">${esc(challengeOptionLabel(challenge))}</option>`).join("")}
+                <option value="">${noChallenges ? "No eligible practice challenges available" : "Select a practice challenge"}</option>
+                ${challenges.map((challenge) => `<option value="${esc(challenge.id)}" ${challenge.id === preselectedId ? "selected" : ""}>${esc(challengeOptionLabel(challenge))}</option>`).join("")}
               </select>
+              <span class="hint">You do NOT need to accept the challenge first. Select the challenge that represents the match you played.</span>
             </label>
 
             <div id="resultChallengeDetails" class="result-challenge-box">
-              <div class="result-empty-state"><strong>${noChallenges ? "NO ACCEPTED CHALLENGE" : "SELECT A CHALLENGE"}</strong><span>${noChallenges ? "Accept a Practice Challenge first, then return here." : "The selected challenge details will appear here."}</span></div>
+              <div class="result-empty-state"><strong>${noChallenges ? "NO ELIGIBLE CHALLENGES" : "SELECT A CHALLENGE"}</strong><span>${noChallenges ? "Create a challenge or wait for an open challenge to become available." : "Challenge details will auto-fill here."}</span></div>
             </div>
 
             <label class="result-format-select">RESULT FORMAT *
@@ -1142,7 +1185,7 @@
                 <option value="DUO">DUO</option>
                 <option value="SQUAD">SQUAD</option>
               </select>
-              <span class="result-format-note">The result format must match the selected accepted challenge. Points are kept separately for SOLO, DUO and SQUAD rankings.</span>
+              <span class="result-format-note">This field is auto-filled from the selected challenge and cannot be changed to a different format.</span>
             </label>
 
             <div class="field-grid">
@@ -1154,7 +1197,7 @@
             <div class="result-score-preview" id="resultScorePreview"><span>FINAL SCORE</span><strong>—</strong></div>
 
             <div class="proof-grid">
-              <label>SCREENSHOT 1 — ACCEPTED CHALLENGE *
+              <label>SCREENSHOT 1 — CHALLENGE *
                 <input id="resultChallengeProof" type="file" accept="image/png,image/jpeg,image/webp" required>
                 <span class="hint">Private proof screenshot used only for Admin verification.</span>
               </label>
@@ -1188,18 +1231,13 @@
     const preview = document.getElementById("resultScorePreview");
 
     challengeSelect?.addEventListener("change", () => {
+      state.resultChallengeId = challengeSelect.value || "";
       renderResultChallengeDetails(challengeById(challenges, challengeSelect.value));
     });
 
-    resultFormat?.addEventListener("change", () => {
-      const selected = challengeById(challenges, challengeSelect?.value || "");
-      if (!selected) return;
-      const expected = String(selected.format || "").toUpperCase();
-      if (resultFormat.value !== expected) {
-        resultFormat.value = expected;
-        showToast(`Result format must match the selected challenge: ${expected}.`, "error");
-      }
-    });
+    if (challengeSelect?.value) {
+      renderResultChallengeDetails(challengeById(challenges, challengeSelect.value));
+    }
 
     const syncPreview = () => {
       const clean = String(score?.value || "").replace(/\s+/g, "").replace(/[^0-9-]/g, "");
@@ -1211,6 +1249,14 @@
     });
     loser?.addEventListener("change", () => {
       if (loser.value && winner.value === loser.value) winner.value = "";
+    });
+
+    // The format is derived from the selected challenge, not manually chosen.
+    resultFormat?.addEventListener("change", () => {
+      const selected = challengeById(challenges, challengeSelect?.value || "");
+      if (!selected) return;
+      resultFormat.value = String(selected.format || "").toUpperCase();
+      showToast("Result format is automatically taken from the selected challenge.", "error");
     });
   }
 
@@ -1227,18 +1273,24 @@
       const challengeProof = document.getElementById("resultChallengeProof")?.files?.[0] || null;
       const matchProof = document.getElementById("resultMatchProof")?.files?.[0] || null;
 
-      if (!challengeId) throw new Error("Select the accepted practice challenge first.");
-      const selectedChallenge = (await getMyResultChallenges()).find((item) => item.id === challengeId) || null;
+      if (!challengeId) throw new Error("Select the practice challenge first.");
+
+      const selectedChallenges = await getMyResultChallenges();
+      const selectedChallenge = selectedChallenges.find((item) => item.id === challengeId) || null;
       if (!selectedChallenge) throw new Error("The selected challenge is no longer available for result submission.");
+
       const expectedFormat = String(selectedChallenge.format || "").toUpperCase();
-      if (!["SOLO","DUO","SQUAD"].includes(resultFormat)) throw new Error("Select SOLO, DUO or SQUAD result format.");
-      if (resultFormat !== expectedFormat) throw new Error(`Result format must match the accepted challenge: ${expectedFormat}.`);
+      if (!["SOLO","DUO","SQUAD"].includes(resultFormat)) throw new Error("Select a valid result format.");
+      if (resultFormat !== expectedFormat) throw new Error(`Result format is fixed by the selected challenge: ${expectedFormat}.`);
+
       if (!winnerTeamId || !loserTeamId) throw new Error("Select both Winner Team and Loser Team.");
       if (winnerTeamId === loserTeamId) throw new Error("Winner and Loser must be different teams.");
-      if (winnerTeamId !== team.id && loserTeamId !== team.id) throw new Error("Your team must be either the Winner or the Loser of the selected challenge.");
-      if (!/^\d{1,3}\s*-\s*\d{1,3}$/.test(scoreValue)) throw new Error("Enter the final score in this format: 7-1");
+      if (winnerTeamId !== team.id && loserTeamId !== team.id) {
+        throw new Error("Your team must be either the Winner or the Loser.");
+      }
 
-      const [winnerScore, loserScore] = scoreValue.split("-").map((value) => Number(value.trim()));
+      const [winnerScore, loserScore] = scoreValue.replace(/\s+/g, "").split("-").map((value) => Number(value));
+      if (!/^\d{1,3}-\d{1,3}$/.test(scoreValue.replace(/\s+/g, ""))) throw new Error("Enter the final score in this format: 7-1.");
       if (!Number.isFinite(winnerScore) || !Number.isFinite(loserScore) || winnerScore <= loserScore) {
         throw new Error("The final score must show a higher score for the Winner, for example 7-1.");
       }
@@ -1272,6 +1324,7 @@
       });
       if (error) throw error;
 
+      state.resultChallengeId = "";
       showToast("Result submitted successfully. Waiting for Admin approval.");
       await loadMemberSection();
     } catch (error) {
@@ -1943,22 +1996,12 @@
       await openProof(button.dataset.proofRef, button.dataset.proofTitle || "RESULT PROOF");
     }));
 
-    document.querySelectorAll("[data-accept-challenge]").forEach((button) => button.addEventListener("click", async () => {
-      const id = button.dataset.acceptChallenge;
+    document.querySelectorAll("[data-select-result]").forEach((button) => button.addEventListener("click", () => {
+      const id = button.dataset.selectResult;
       if (!id) return;
-      button.disabled = true;
-      button.textContent = "ACCEPTING...";
-      try {
-        const { error } = await supabase.rpc("accept_practice_challenge", { p_challenge_id: id });
-        if (error) throw error;
-        showToast("Challenge accepted. You can submit the final result after the match.");
-        await loadMemberSection();
-      } catch (error) {
-        console.error(error);
-        button.disabled = false;
-        button.textContent = "ACCEPT CHALLENGE";
-        showToast(friendlyError(error, "Could not accept challenge."), "error");
-      }
+      state.resultChallengeId = id;
+      state.section = "results";
+      renderMember();
     }));
 
     document.querySelectorAll("[data-json]").forEach((button) => button.addEventListener("click", () => {
